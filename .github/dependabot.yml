@@ -1,0 +1,11 @@
+version: 2
+updates:
+  # GitHub Actions only. Python and npm dependencies are updated deliberately, by hand.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
