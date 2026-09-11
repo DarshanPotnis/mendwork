@@ -2,27 +2,30 @@
 
 import logging
 import sys
+from collections.abc import Callable
 from importlib.metadata import version as package_version
 
 import pytest
 import structlog
-from typer.testing import CliRunner
+from typer.testing import CliRunner, Result
 
 from mendwork.apps.cli.main import app, main
 
 
-def test_version_option_prints_the_installed_version() -> None:
+def test_version_option_prints_the_installed_version(
+    plain_stdout: Callable[[Result], str],
+) -> None:
     result = CliRunner().invoke(app, ["--version"])
 
     assert result.exit_code == 0
-    assert result.stdout.strip() == f"mendwork {package_version('mendwork')}"
+    assert plain_stdout(result).strip() == f"mendwork {package_version('mendwork')}"
 
 
-def test_help_documents_the_version_option() -> None:
+def test_help_documents_the_version_option(plain_stdout: Callable[[Result], str]) -> None:
     result = CliRunner().invoke(app, ["--help"])
 
     assert result.exit_code == 0
-    assert "--version" in result.stdout
+    assert "--version" in plain_stdout(result)
 
 
 def test_an_unknown_command_fails_loudly() -> None:

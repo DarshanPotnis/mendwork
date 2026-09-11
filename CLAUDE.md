@@ -97,6 +97,7 @@ Both are plain JavaScript with **no build step**, type-checked by TypeScript.
 - **Browser tests:** only against the locally served chaos portal or `page.set_content` fixtures.
 - **Model provider tests:** recorded HTTP fixtures via `respx`. Live calls run only via `make live-providers`, never in CI.
 - **Deterministic always:** fixed seeds, injected clock, no sleeps, no order-dependent tests.
+- Tests that assert on CLI output must read it through the `plain_stdout` fixture (`tests/conftest.py`); rich/typer emit ANSI styling when `GITHUB_ACTIONS`, `FORCE_COLOR`, or `PY_COLORS` is set.
 - **Coverage gates:** `mendwork.engine` ≥ 90% lines; overall ≥ 85%.
 - **A wrong click is a failing test.** The heal fixture suite's wrong-action count must be exactly 0.
 - Use `hypothesis` for invariants: serialization round-trips, scoring monotonicity, policy ordering.
