@@ -1,0 +1,28 @@
+{
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    }
+  },
+  "ruff.importStrategy": "fromEnvironment",
+  "mypy-type-checker.importStrategy": "fromEnvironment",
+  "python.analysis.typeCheckingMode": "off",
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "js/ts.implicitProjectConfig.checkJs": true,
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "yaml.schemas": {
+    "./schemas/workflow.schema.json": ["workflows/**/*.yaml"]
+  },
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.mypy_cache": true,
+    "**/.pytest_cache": true,
+    "**/.ruff_cache": true
+  }
+}

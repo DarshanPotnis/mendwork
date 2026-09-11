@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "anthropic.claude-code",
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "charliermarsh.ruff",
+    "ms-python.mypy-type-checker",
+    "redhat.vscode-yaml",
+    "tamasfe.even-better-toml",
+    "bierner.markdown-mermaid"
+  ]
+}
