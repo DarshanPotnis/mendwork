@@ -1,0 +1,2078 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "AriaRole": {
+      "description": "WAI-ARIA roles, exactly the set Playwright's role locator accepts.\n\nA test compares this list with Playwright's own type, so the two cannot drift apart.",
+      "enum": [
+        "alert",
+        "alertdialog",
+        "application",
+        "article",
+        "banner",
+        "blockquote",
+        "button",
+        "caption",
+        "cell",
+        "checkbox",
+        "code",
+        "columnheader",
+        "combobox",
+        "complementary",
+        "contentinfo",
+        "definition",
+        "deletion",
+        "dialog",
+        "directory",
+        "document",
+        "emphasis",
+        "feed",
+        "figure",
+        "form",
+        "generic",
+        "grid",
+        "gridcell",
+        "group",
+        "heading",
+        "img",
+        "insertion",
+        "link",
+        "list",
+        "listbox",
+        "listitem",
+        "log",
+        "main",
+        "marquee",
+        "math",
+        "menu",
+        "menubar",
+        "menuitem",
+        "menuitemcheckbox",
+        "menuitemradio",
+        "meter",
+        "navigation",
+        "none",
+        "note",
+        "option",
+        "paragraph",
+        "presentation",
+        "progressbar",
+        "radio",
+        "radiogroup",
+        "region",
+        "row",
+        "rowgroup",
+        "rowheader",
+        "scrollbar",
+        "search",
+        "searchbox",
+        "separator",
+        "slider",
+        "spinbutton",
+        "status",
+        "strong",
+        "subscript",
+        "superscript",
+        "switch",
+        "tab",
+        "table",
+        "tablist",
+        "tabpanel",
+        "term",
+        "textbox",
+        "time",
+        "timer",
+        "toolbar",
+        "tooltip",
+        "tree",
+        "treegrid",
+        "treeitem"
+      ],
+      "title": "AriaRole",
+      "type": "string"
+    },
+    "ByCss": {
+      "additionalProperties": false,
+      "description": "The element matching a plain CSS selector.",
+      "properties": {
+        "strategy": {
+          "const": "css",
+          "title": "Strategy",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "within": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "css": "#/$defs/ByCss",
+                  "label": "#/$defs/ByLabel",
+                  "placeholder": "#/$defs/ByPlaceholder",
+                  "role_name": "#/$defs/ByRole",
+                  "test_id": "#/$defs/ByTestId",
+                  "text": "#/$defs/ByText"
+                },
+                "propertyName": "strategy"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ByTestId"
+                },
+                {
+                  "$ref": "#/$defs/ByRole"
+                },
+                {
+                  "$ref": "#/$defs/ByLabel"
+                },
+                {
+                  "$ref": "#/$defs/ByPlaceholder"
+                },
+                {
+                  "$ref": "#/$defs/ByText"
+                },
+                {
+                  "$ref": "#/$defs/ByCss"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Search only inside the single element this selector finds.",
+          "title": "Within"
+        }
+      },
+      "required": [
+        "strategy",
+        "value"
+      ],
+      "title": "ByCss",
+      "type": "object"
+    },
+    "ByLabel": {
+      "additionalProperties": false,
+      "description": "The form control labelled ``value`` (label element, aria-labelledby, or aria-label).",
+      "properties": {
+        "strategy": {
+          "const": "label",
+          "title": "Strategy",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "exact": {
+          "default": true,
+          "description": "True: the whole label, case-sensitive. False: a case-insensitive substring.",
+          "title": "Exact",
+          "type": "boolean"
+        },
+        "within": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "css": "#/$defs/ByCss",
+                  "label": "#/$defs/ByLabel",
+                  "placeholder": "#/$defs/ByPlaceholder",
+                  "role_name": "#/$defs/ByRole",
+                  "test_id": "#/$defs/ByTestId",
+                  "text": "#/$defs/ByText"
+                },
+                "propertyName": "strategy"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ByTestId"
+                },
+                {
+                  "$ref": "#/$defs/ByRole"
+                },
+                {
+                  "$ref": "#/$defs/ByLabel"
+                },
+                {
+                  "$ref": "#/$defs/ByPlaceholder"
+                },
+                {
+                  "$ref": "#/$defs/ByText"
+                },
+                {
+                  "$ref": "#/$defs/ByCss"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Search only inside the single element this selector finds.",
+          "title": "Within"
+        }
+      },
+      "required": [
+        "strategy",
+        "value"
+      ],
+      "title": "ByLabel",
+      "type": "object"
+    },
+    "ByPlaceholder": {
+      "additionalProperties": false,
+      "description": "The input whose placeholder is ``value``.",
+      "properties": {
+        "strategy": {
+          "const": "placeholder",
+          "title": "Strategy",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "exact": {
+          "default": true,
+          "description": "True: the whole placeholder, case-sensitive. False: a case-insensitive substring.",
+          "title": "Exact",
+          "type": "boolean"
+        },
+        "within": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "css": "#/$defs/ByCss",
+                  "label": "#/$defs/ByLabel",
+                  "placeholder": "#/$defs/ByPlaceholder",
+                  "role_name": "#/$defs/ByRole",
+                  "test_id": "#/$defs/ByTestId",
+                  "text": "#/$defs/ByText"
+                },
+                "propertyName": "strategy"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ByTestId"
+                },
+                {
+                  "$ref": "#/$defs/ByRole"
+                },
+                {
+                  "$ref": "#/$defs/ByLabel"
+                },
+                {
+                  "$ref": "#/$defs/ByPlaceholder"
+                },
+                {
+                  "$ref": "#/$defs/ByText"
+                },
+                {
+                  "$ref": "#/$defs/ByCss"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Search only inside the single element this selector finds.",
+          "title": "Within"
+        }
+      },
+      "required": [
+        "strategy",
+        "value"
+      ],
+      "title": "ByPlaceholder",
+      "type": "object"
+    },
+    "ByRole": {
+      "additionalProperties": false,
+      "description": "The element with this ARIA role and accessible name.",
+      "properties": {
+        "strategy": {
+          "const": "role_name",
+          "title": "Strategy",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/AriaRole"
+        },
+        "name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "exact": {
+          "default": true,
+          "description": "True: the whole name, case-sensitive. False: a case-insensitive substring.",
+          "title": "Exact",
+          "type": "boolean"
+        },
+        "within": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "css": "#/$defs/ByCss",
+                  "label": "#/$defs/ByLabel",
+                  "placeholder": "#/$defs/ByPlaceholder",
+                  "role_name": "#/$defs/ByRole",
+                  "test_id": "#/$defs/ByTestId",
+                  "text": "#/$defs/ByText"
+                },
+                "propertyName": "strategy"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ByTestId"
+                },
+                {
+                  "$ref": "#/$defs/ByRole"
+                },
+                {
+                  "$ref": "#/$defs/ByLabel"
+                },
+                {
+                  "$ref": "#/$defs/ByPlaceholder"
+                },
+                {
+                  "$ref": "#/$defs/ByText"
+                },
+                {
+                  "$ref": "#/$defs/ByCss"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Search only inside the single element this selector finds.",
+          "title": "Within"
+        }
+      },
+      "required": [
+        "strategy",
+        "role",
+        "name"
+      ],
+      "title": "ByRole",
+      "type": "object"
+    },
+    "ByTestId": {
+      "additionalProperties": false,
+      "description": "The element whose ``data-testid`` attribute equals ``value``.",
+      "properties": {
+        "strategy": {
+          "const": "test_id",
+          "title": "Strategy",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "within": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "css": "#/$defs/ByCss",
+                  "label": "#/$defs/ByLabel",
+                  "placeholder": "#/$defs/ByPlaceholder",
+                  "role_name": "#/$defs/ByRole",
+                  "test_id": "#/$defs/ByTestId",
+                  "text": "#/$defs/ByText"
+                },
+                "propertyName": "strategy"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ByTestId"
+                },
+                {
+                  "$ref": "#/$defs/ByRole"
+                },
+                {
+                  "$ref": "#/$defs/ByLabel"
+                },
+                {
+                  "$ref": "#/$defs/ByPlaceholder"
+                },
+                {
+                  "$ref": "#/$defs/ByText"
+                },
+                {
+                  "$ref": "#/$defs/ByCss"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Search only inside the single element this selector finds.",
+          "title": "Within"
+        }
+      },
+      "required": [
+        "strategy",
+        "value"
+      ],
+      "title": "ByTestId",
+      "type": "object"
+    },
+    "ByText": {
+      "additionalProperties": false,
+      "description": "The smallest element whose visible text is ``value``.",
+      "properties": {
+        "strategy": {
+          "const": "text",
+          "title": "Strategy",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "exact": {
+          "default": true,
+          "description": "True: the whole text, case-sensitive. False: a case-insensitive substring.",
+          "title": "Exact",
+          "type": "boolean"
+        },
+        "within": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "css": "#/$defs/ByCss",
+                  "label": "#/$defs/ByLabel",
+                  "placeholder": "#/$defs/ByPlaceholder",
+                  "role_name": "#/$defs/ByRole",
+                  "test_id": "#/$defs/ByTestId",
+                  "text": "#/$defs/ByText"
+                },
+                "propertyName": "strategy"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ByTestId"
+                },
+                {
+                  "$ref": "#/$defs/ByRole"
+                },
+                {
+                  "$ref": "#/$defs/ByLabel"
+                },
+                {
+                  "$ref": "#/$defs/ByPlaceholder"
+                },
+                {
+                  "$ref": "#/$defs/ByText"
+                },
+                {
+                  "$ref": "#/$defs/ByCss"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Search only inside the single element this selector finds.",
+          "title": "Within"
+        }
+      },
+      "required": [
+        "strategy",
+        "value"
+      ],
+      "title": "ByText",
+      "type": "object"
+    },
+    "ClickStep": {
+      "additionalProperties": false,
+      "description": "Click the target.",
+      "properties": {
+        "id": {
+          "description": "Unique within the workflow and stable across versions: a heal never changes it.",
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "intent": {
+          "description": "What the step is for, in words a reviewer understands.",
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Intent",
+          "type": "string"
+        },
+        "action": {
+          "const": "click",
+          "title": "Action",
+          "type": "string"
+        },
+        "risk": {
+          "$ref": "#/$defs/RiskLevel",
+          "description": "What the action changes: safe reads, caution changes session or form state,\nirreversible changes stored data or affects others."
+        },
+        "target": {
+          "$ref": "#/$defs/Fingerprint"
+        },
+        "checkpoints": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "download_completed": "#/$defs/DownloadCompleted",
+                "element_visible": "#/$defs/ElementVisible",
+                "no_error_banner": "#/$defs/NoErrorBanner",
+                "response_received": "#/$defs/ResponseReceived",
+                "text_present": "#/$defs/TextPresent",
+                "url_matches": "#/$defs/UrlMatches"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/UrlMatches"
+              },
+              {
+                "$ref": "#/$defs/ElementVisible"
+              },
+              {
+                "$ref": "#/$defs/TextPresent"
+              },
+              {
+                "$ref": "#/$defs/DownloadCompleted"
+              },
+              {
+                "$ref": "#/$defs/ResponseReceived"
+              },
+              {
+                "$ref": "#/$defs/NoErrorBanner"
+              }
+            ]
+          },
+          "maxItems": 10,
+          "title": "Checkpoints",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "intent",
+        "action",
+        "risk",
+        "target"
+      ],
+      "title": "ClickStep",
+      "type": "object"
+    },
+    "DateInput": {
+      "additionalProperties": false,
+      "description": "A calendar date run input, written YYYY-MM-DD.",
+      "properties": {
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "const": "date",
+          "title": "Kind",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "description": "An optional input must declare a default, so no step ever runs without a value.",
+          "title": "Required",
+          "type": "boolean"
+        },
+        "default": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "title": "DateInput",
+      "type": "object"
+    },
+    "DownloadCompleted": {
+      "additionalProperties": false,
+      "description": "A download finished and its suggested filename matches the pattern.",
+      "properties": {
+        "kind": {
+          "const": "download_completed",
+          "title": "Kind",
+          "type": "string"
+        },
+        "filename_pattern": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Filename Pattern",
+          "type": "string"
+        },
+        "timeout_ms": {
+          "anyOf": [
+            {
+              "maximum": 600000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout Ms"
+        }
+      },
+      "required": [
+        "kind",
+        "filename_pattern"
+      ],
+      "title": "DownloadCompleted",
+      "type": "object"
+    },
+    "ElementVisible": {
+      "additionalProperties": false,
+      "description": "Exactly one element matching the selector is visible.",
+      "properties": {
+        "kind": {
+          "const": "element_visible",
+          "title": "Kind",
+          "type": "string"
+        },
+        "selector": {
+          "discriminator": {
+            "mapping": {
+              "css": "#/$defs/ByCss",
+              "label": "#/$defs/ByLabel",
+              "placeholder": "#/$defs/ByPlaceholder",
+              "role_name": "#/$defs/ByRole",
+              "test_id": "#/$defs/ByTestId",
+              "text": "#/$defs/ByText"
+            },
+            "propertyName": "strategy"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ByTestId"
+            },
+            {
+              "$ref": "#/$defs/ByRole"
+            },
+            {
+              "$ref": "#/$defs/ByLabel"
+            },
+            {
+              "$ref": "#/$defs/ByPlaceholder"
+            },
+            {
+              "$ref": "#/$defs/ByText"
+            },
+            {
+              "$ref": "#/$defs/ByCss"
+            }
+          ],
+          "title": "Selector"
+        },
+        "timeout_ms": {
+          "anyOf": [
+            {
+              "maximum": 600000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout Ms"
+        }
+      },
+      "required": [
+        "kind",
+        "selector"
+      ],
+      "title": "ElementVisible",
+      "type": "object"
+    },
+    "FillStep": {
+      "additionalProperties": false,
+      "description": "Replace the target field's content with a value.",
+      "properties": {
+        "id": {
+          "description": "Unique within the workflow and stable across versions: a heal never changes it.",
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "intent": {
+          "description": "What the step is for, in words a reviewer understands.",
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Intent",
+          "type": "string"
+        },
+        "action": {
+          "const": "fill",
+          "title": "Action",
+          "type": "string"
+        },
+        "risk": {
+          "$ref": "#/$defs/RiskLevel",
+          "description": "What the action changes: safe reads, caution changes session or form state,\nirreversible changes stored data or affects others."
+        },
+        "target": {
+          "$ref": "#/$defs/Fingerprint"
+        },
+        "value": {
+          "discriminator": {
+            "mapping": {
+              "input": "#/$defs/InputValue",
+              "literal": "#/$defs/LiteralValue",
+              "secret": "#/$defs/SecretValue"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LiteralValue"
+            },
+            {
+              "$ref": "#/$defs/InputValue"
+            },
+            {
+              "$ref": "#/$defs/SecretValue"
+            }
+          ],
+          "title": "Value"
+        },
+        "checkpoints": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "download_completed": "#/$defs/DownloadCompleted",
+                "element_visible": "#/$defs/ElementVisible",
+                "no_error_banner": "#/$defs/NoErrorBanner",
+                "response_received": "#/$defs/ResponseReceived",
+                "text_present": "#/$defs/TextPresent",
+                "url_matches": "#/$defs/UrlMatches"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/UrlMatches"
+              },
+              {
+                "$ref": "#/$defs/ElementVisible"
+              },
+              {
+                "$ref": "#/$defs/TextPresent"
+              },
+              {
+                "$ref": "#/$defs/DownloadCompleted"
+              },
+              {
+                "$ref": "#/$defs/ResponseReceived"
+              },
+              {
+                "$ref": "#/$defs/NoErrorBanner"
+              }
+            ]
+          },
+          "maxItems": 10,
+          "title": "Checkpoints",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "intent",
+        "action",
+        "risk",
+        "target",
+        "value"
+      ],
+      "title": "FillStep",
+      "type": "object"
+    },
+    "Fingerprint": {
+      "additionalProperties": false,
+      "description": "A target element, described redundantly so a heal can match it on any surviving clue.",
+      "properties": {
+        "tag": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Tag",
+          "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AriaRole"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "accessible_name": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accessible Name"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Visible text content, whitespace-normalized.",
+          "title": "Text"
+        },
+        "label_text": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label Text"
+        },
+        "attributes": {
+          "$ref": "#/$defs/FingerprintAttributes",
+          "default": {
+            "id": null,
+            "name": null,
+            "type": null,
+            "autocomplete": null,
+            "placeholder": null,
+            "aria_label": null,
+            "data_testid": null,
+            "href": null
+          }
+        },
+        "nearby_text": {
+          "default": [],
+          "description": "Nearest heading, preceding label, and row or column headers.",
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Nearby Text",
+          "type": "array"
+        },
+        "structural_path": {
+          "description": "Simplified ancestor chain, such as 'main > section > form > button'.",
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Structural Path",
+          "type": "string"
+        },
+        "bbox": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NormalizedBox"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "selectors": {
+          "description": "Ranked best first; each must find exactly one element.",
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "css": "#/$defs/ByCss",
+                "label": "#/$defs/ByLabel",
+                "placeholder": "#/$defs/ByPlaceholder",
+                "role_name": "#/$defs/ByRole",
+                "test_id": "#/$defs/ByTestId",
+                "text": "#/$defs/ByText"
+              },
+              "propertyName": "strategy"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/ByTestId"
+              },
+              {
+                "$ref": "#/$defs/ByRole"
+              },
+              {
+                "$ref": "#/$defs/ByLabel"
+              },
+              {
+                "$ref": "#/$defs/ByPlaceholder"
+              },
+              {
+                "$ref": "#/$defs/ByText"
+              },
+              {
+                "$ref": "#/$defs/ByCss"
+              }
+            ]
+          },
+          "maxItems": 10,
+          "minItems": 1,
+          "title": "Selectors",
+          "type": "array"
+        }
+      },
+      "required": [
+        "tag",
+        "structural_path",
+        "selectors"
+      ],
+      "title": "Fingerprint",
+      "type": "object"
+    },
+    "FingerprintAttributes": {
+      "additionalProperties": false,
+      "description": "The allowlisted HTML attributes of a target; nothing else is ever stored.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Type"
+        },
+        "autocomplete": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Autocomplete"
+        },
+        "placeholder": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placeholder"
+        },
+        "aria_label": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``aria-label`` attribute.",
+          "title": "Aria Label"
+        },
+        "data_testid": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The ``data-testid`` attribute.",
+          "title": "Data Testid"
+        },
+        "href": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The link's path only, resolved against the page URL.",
+          "title": "Href"
+        }
+      },
+      "title": "FingerprintAttributes",
+      "type": "object"
+    },
+    "InputValue": {
+      "additionalProperties": false,
+      "description": "A value supplied when a run starts; it is recorded in run history.",
+      "properties": {
+        "kind": {
+          "const": "input",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "title": "InputValue",
+      "type": "object"
+    },
+    "LiteralValue": {
+      "additionalProperties": false,
+      "description": "A value written into the workflow itself.",
+      "properties": {
+        "kind": {
+          "const": "literal",
+          "title": "Kind",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 4096,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "title": "LiteralValue",
+      "type": "object"
+    },
+    "ManualEdit": {
+      "additionalProperties": false,
+      "description": "A person edited the workflow's content by hand.",
+      "properties": {
+        "kind": {
+          "const": "manual_edit",
+          "title": "Kind",
+          "type": "string"
+        },
+        "summary": {
+          "description": "What changed and why, for the version history.",
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "summary"
+      ],
+      "title": "ManualEdit",
+      "type": "object"
+    },
+    "NavigateStep": {
+      "additionalProperties": false,
+      "description": "Load a URL in the current tab.",
+      "properties": {
+        "id": {
+          "description": "Unique within the workflow and stable across versions: a heal never changes it.",
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "intent": {
+          "description": "What the step is for, in words a reviewer understands.",
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Intent",
+          "type": "string"
+        },
+        "action": {
+          "const": "navigate",
+          "title": "Action",
+          "type": "string"
+        },
+        "risk": {
+          "$ref": "#/$defs/RiskLevel",
+          "description": "What the action changes: safe reads, caution changes session or form state,\nirreversible changes stored data or affects others."
+        },
+        "value": {
+          "description": "The URL: a literal absolute http(s) URL or a url input.",
+          "discriminator": {
+            "mapping": {
+              "input": "#/$defs/InputValue",
+              "literal": "#/$defs/LiteralValue"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LiteralValue"
+            },
+            {
+              "$ref": "#/$defs/InputValue"
+            }
+          ],
+          "title": "Value"
+        },
+        "checkpoints": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "download_completed": "#/$defs/DownloadCompleted",
+                "element_visible": "#/$defs/ElementVisible",
+                "no_error_banner": "#/$defs/NoErrorBanner",
+                "response_received": "#/$defs/ResponseReceived",
+                "text_present": "#/$defs/TextPresent",
+                "url_matches": "#/$defs/UrlMatches"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/UrlMatches"
+              },
+              {
+                "$ref": "#/$defs/ElementVisible"
+              },
+              {
+                "$ref": "#/$defs/TextPresent"
+              },
+              {
+                "$ref": "#/$defs/DownloadCompleted"
+              },
+              {
+                "$ref": "#/$defs/ResponseReceived"
+              },
+              {
+                "$ref": "#/$defs/NoErrorBanner"
+              }
+            ]
+          },
+          "maxItems": 10,
+          "title": "Checkpoints",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "intent",
+        "action",
+        "risk",
+        "value"
+      ],
+      "title": "NavigateStep",
+      "type": "object"
+    },
+    "NoErrorBanner": {
+      "additionalProperties": false,
+      "description": "No error banner is visible, checked once after the step's other checkpoints pass.\n\nIt has no timeout: waiting for something *not* to appear would be a sleep. Without a\nselector, the runtime's default applies (a visible role=alert element with text).",
+      "properties": {
+        "kind": {
+          "const": "no_error_banner",
+          "title": "Kind",
+          "type": "string"
+        },
+        "selector": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "css": "#/$defs/ByCss",
+                  "label": "#/$defs/ByLabel",
+                  "placeholder": "#/$defs/ByPlaceholder",
+                  "role_name": "#/$defs/ByRole",
+                  "test_id": "#/$defs/ByTestId",
+                  "text": "#/$defs/ByText"
+                },
+                "propertyName": "strategy"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ByTestId"
+                },
+                {
+                  "$ref": "#/$defs/ByRole"
+                },
+                {
+                  "$ref": "#/$defs/ByLabel"
+                },
+                {
+                  "$ref": "#/$defs/ByPlaceholder"
+                },
+                {
+                  "$ref": "#/$defs/ByText"
+                },
+                {
+                  "$ref": "#/$defs/ByCss"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selector"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "NoErrorBanner",
+      "type": "object"
+    },
+    "NormalizedBox": {
+      "additionalProperties": false,
+      "description": "A position relative to the whole document (not the viewport), so it is scroll-independent.",
+      "properties": {
+        "x": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Y",
+          "type": "number"
+        },
+        "width": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Width",
+          "type": "number"
+        },
+        "height": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Height",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "title": "NormalizedBox",
+      "type": "object"
+    },
+    "PressStep": {
+      "additionalProperties": false,
+      "description": "Press a key, on the target if there is one, otherwise on the focused page.",
+      "properties": {
+        "id": {
+          "description": "Unique within the workflow and stable across versions: a heal never changes it.",
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "intent": {
+          "description": "What the step is for, in words a reviewer understands.",
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Intent",
+          "type": "string"
+        },
+        "action": {
+          "const": "press",
+          "title": "Action",
+          "type": "string"
+        },
+        "risk": {
+          "$ref": "#/$defs/RiskLevel",
+          "description": "What the action changes: safe reads, caution changes session or form state,\nirreversible changes stored data or affects others."
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fingerprint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "key": {
+          "description": "A named key or character, optionally with modifiers, such as 'Enter' or 'Control+a'.",
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "checkpoints": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "download_completed": "#/$defs/DownloadCompleted",
+                "element_visible": "#/$defs/ElementVisible",
+                "no_error_banner": "#/$defs/NoErrorBanner",
+                "response_received": "#/$defs/ResponseReceived",
+                "text_present": "#/$defs/TextPresent",
+                "url_matches": "#/$defs/UrlMatches"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/UrlMatches"
+              },
+              {
+                "$ref": "#/$defs/ElementVisible"
+              },
+              {
+                "$ref": "#/$defs/TextPresent"
+              },
+              {
+                "$ref": "#/$defs/DownloadCompleted"
+              },
+              {
+                "$ref": "#/$defs/ResponseReceived"
+              },
+              {
+                "$ref": "#/$defs/NoErrorBanner"
+              }
+            ]
+          },
+          "maxItems": 10,
+          "title": "Checkpoints",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "intent",
+        "action",
+        "risk",
+        "key"
+      ],
+      "title": "PressStep",
+      "type": "object"
+    },
+    "ResponseReceived": {
+      "additionalProperties": false,
+      "description": "A network response arrived from a matching URL with a status in the range.",
+      "properties": {
+        "kind": {
+          "const": "response_received",
+          "title": "Kind",
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "#/$defs/UrlMatchMode",
+          "description": "exact: the whole URL. prefix: the URL starts with it. regex: re.fullmatch."
+        },
+        "pattern": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Pattern",
+          "type": "string"
+        },
+        "status_min": {
+          "maximum": 599,
+          "minimum": 100,
+          "title": "Status Min",
+          "type": "integer"
+        },
+        "status_max": {
+          "maximum": 599,
+          "minimum": 100,
+          "title": "Status Max",
+          "type": "integer"
+        },
+        "timeout_ms": {
+          "anyOf": [
+            {
+              "maximum": 600000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout Ms"
+        }
+      },
+      "required": [
+        "kind",
+        "mode",
+        "pattern",
+        "status_min",
+        "status_max"
+      ],
+      "title": "ResponseReceived",
+      "type": "object"
+    },
+    "RiskLevel": {
+      "description": "What a step's action changes, which decides how carefully a heal must be treated.\n\nClassified by consequence, not by mechanism: submitting a filter form reads data, while\nclicking a plain button can delete it.",
+      "enum": [
+        "safe",
+        "caution",
+        "irreversible"
+      ],
+      "title": "RiskLevel",
+      "type": "string"
+    },
+    "Rollback": {
+      "additionalProperties": false,
+      "description": "The content of an earlier version was restored as a new version.",
+      "properties": {
+        "kind": {
+          "const": "rollback",
+          "title": "Kind",
+          "type": "string"
+        },
+        "restored_version": {
+          "description": "The version whose content this version carries.",
+          "minimum": 1,
+          "title": "Restored Version",
+          "type": "integer"
+        },
+        "reason": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "restored_version",
+        "reason"
+      ],
+      "title": "Rollback",
+      "type": "object"
+    },
+    "SecretValue": {
+      "additionalProperties": false,
+      "description": "A value resolved only in memory, at the moment of use, and never stored or logged.",
+      "properties": {
+        "kind": {
+          "const": "secret",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "title": "SecretValue",
+      "type": "object"
+    },
+    "SelectStep": {
+      "additionalProperties": false,
+      "description": "Choose the option whose visible label is the value.",
+      "properties": {
+        "id": {
+          "description": "Unique within the workflow and stable across versions: a heal never changes it.",
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "intent": {
+          "description": "What the step is for, in words a reviewer understands.",
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Intent",
+          "type": "string"
+        },
+        "action": {
+          "const": "select",
+          "title": "Action",
+          "type": "string"
+        },
+        "risk": {
+          "$ref": "#/$defs/RiskLevel",
+          "description": "What the action changes: safe reads, caution changes session or form state,\nirreversible changes stored data or affects others."
+        },
+        "target": {
+          "$ref": "#/$defs/Fingerprint"
+        },
+        "value": {
+          "description": "The option's visible label.",
+          "discriminator": {
+            "mapping": {
+              "input": "#/$defs/InputValue",
+              "literal": "#/$defs/LiteralValue"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/LiteralValue"
+            },
+            {
+              "$ref": "#/$defs/InputValue"
+            }
+          ],
+          "title": "Value"
+        },
+        "checkpoints": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "download_completed": "#/$defs/DownloadCompleted",
+                "element_visible": "#/$defs/ElementVisible",
+                "no_error_banner": "#/$defs/NoErrorBanner",
+                "response_received": "#/$defs/ResponseReceived",
+                "text_present": "#/$defs/TextPresent",
+                "url_matches": "#/$defs/UrlMatches"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/UrlMatches"
+              },
+              {
+                "$ref": "#/$defs/ElementVisible"
+              },
+              {
+                "$ref": "#/$defs/TextPresent"
+              },
+              {
+                "$ref": "#/$defs/DownloadCompleted"
+              },
+              {
+                "$ref": "#/$defs/ResponseReceived"
+              },
+              {
+                "$ref": "#/$defs/NoErrorBanner"
+              }
+            ]
+          },
+          "maxItems": 10,
+          "title": "Checkpoints",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "intent",
+        "action",
+        "risk",
+        "target",
+        "value"
+      ],
+      "title": "SelectStep",
+      "type": "object"
+    },
+    "TextInput": {
+      "additionalProperties": false,
+      "description": "A free-text run input.",
+      "properties": {
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "const": "text",
+          "title": "Kind",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "description": "An optional input must declare a default, so no step ever runs without a value.",
+          "title": "Required",
+          "type": "boolean"
+        },
+        "default": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "title": "TextInput",
+      "type": "object"
+    },
+    "TextPresent": {
+      "additionalProperties": false,
+      "description": "Visible text on the page contains this text (whitespace-normalized, case-sensitive).",
+      "properties": {
+        "kind": {
+          "const": "text_present",
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "timeout_ms": {
+          "anyOf": [
+            {
+              "maximum": 600000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout Ms"
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "title": "TextPresent",
+      "type": "object"
+    },
+    "UrlInput": {
+      "additionalProperties": false,
+      "description": "An absolute http(s) URL run input.",
+      "properties": {
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "const": "url",
+          "title": "Kind",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "description": "An optional input must declare a default, so no step ever runs without a value.",
+          "title": "Required",
+          "type": "boolean"
+        },
+        "default": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "title": "UrlInput",
+      "type": "object"
+    },
+    "UrlMatchMode": {
+      "description": "How a URL pattern is compared with a URL; always explicit, never guessed.",
+      "enum": [
+        "exact",
+        "prefix",
+        "regex"
+      ],
+      "title": "UrlMatchMode",
+      "type": "string"
+    },
+    "UrlMatches": {
+      "additionalProperties": false,
+      "description": "The page's URL matches a pattern.",
+      "properties": {
+        "kind": {
+          "const": "url_matches",
+          "title": "Kind",
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "#/$defs/UrlMatchMode",
+          "description": "exact: the whole URL. prefix: the URL starts with it. regex: re.fullmatch."
+        },
+        "pattern": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Pattern",
+          "type": "string"
+        },
+        "timeout_ms": {
+          "anyOf": [
+            {
+              "maximum": 600000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout Ms"
+        }
+      },
+      "required": [
+        "kind",
+        "mode",
+        "pattern"
+      ],
+      "title": "UrlMatches",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One immutable version of a workflow, as stored in one file.",
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "The version of this file format; Mendwork refuses formats it does not know.",
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "workflow_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+      "title": "Workflow Id",
+      "type": "string"
+    },
+    "version": {
+      "minimum": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "parent_version": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The version this one was derived from: always the previous number, none for version 1.",
+      "title": "Parent Version"
+    },
+    "created_at": {
+      "description": "When the version was created, in UTC.",
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "change": {
+      "anyOf": [
+        {
+          "discriminator": {
+            "mapping": {
+              "manual_edit": "#/$defs/ManualEdit",
+              "rollback": "#/$defs/Rollback"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ManualEdit"
+            },
+            {
+              "$ref": "#/$defs/Rollback"
+            }
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Why this version exists; none for version 1.",
+      "title": "Change"
+    },
+    "inputs": {
+      "default": [],
+      "description": "Run inputs the steps use. Their values are recorded in run history.",
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "date": "#/$defs/DateInput",
+            "text": "#/$defs/TextInput",
+            "url": "#/$defs/UrlInput"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/TextInput"
+          },
+          {
+            "$ref": "#/$defs/DateInput"
+          },
+          {
+            "$ref": "#/$defs/UrlInput"
+          }
+        ]
+      },
+      "maxItems": 50,
+      "title": "Inputs",
+      "type": "array"
+    },
+    "secrets": {
+      "default": [],
+      "description": "Names of secrets the steps use. Values are resolved only at the moment of use.",
+      "items": {
+        "maxLength": 64,
+        "minLength": 1,
+        "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+        "type": "string"
+      },
+      "maxItems": 50,
+      "title": "Secrets",
+      "type": "array"
+    },
+    "steps": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "click": "#/$defs/ClickStep",
+            "fill": "#/$defs/FillStep",
+            "navigate": "#/$defs/NavigateStep",
+            "press": "#/$defs/PressStep",
+            "select": "#/$defs/SelectStep"
+          },
+          "propertyName": "action"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/NavigateStep"
+          },
+          {
+            "$ref": "#/$defs/ClickStep"
+          },
+          {
+            "$ref": "#/$defs/FillStep"
+          },
+          {
+            "$ref": "#/$defs/SelectStep"
+          },
+          {
+            "$ref": "#/$defs/PressStep"
+          }
+        ]
+      },
+      "maxItems": 500,
+      "minItems": 1,
+      "title": "Steps",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "workflow_id",
+    "version",
+    "created_at",
+    "steps"
+  ],
+  "title": "Mendwork workflow version",
+  "type": "object"
+}

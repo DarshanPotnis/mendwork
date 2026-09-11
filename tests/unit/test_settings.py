@@ -220,3 +220,17 @@ def test_settings_are_frozen() -> None:
     with pytest.raises(ValidationError):
         # mypy rejects this statically; the assertion is that runtime does too.
         settings.log_level = LogLevel.DEBUG  # type: ignore[misc]
+
+
+def test_the_workflow_size_limit_defaults_to_one_mebibyte() -> None:
+    assert Settings(_env_file=None).workflow_max_bytes == 1024 * 1024
+
+
+@pytest.mark.parametrize("limit", ["4095", "16777217", "big"])
+def test_an_unreasonable_workflow_size_limit_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, limit: str
+) -> None:
+    monkeypatch.setenv("MENDWORK_WORKFLOW_MAX_BYTES", limit)
+
+    with pytest.raises(ValidationError, match="workflow_max_bytes"):
+        Settings(_env_file=None)

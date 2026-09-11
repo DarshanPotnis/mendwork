@@ -5,8 +5,43 @@ record, and shown to a user as key-value evidence, instead of being flattened in
 a message string that later code has to parse back apart.
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
+
+Location = tuple[str | int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ValidationIssue:
+    """One problem found in a workflow document, addressed by its path inside the document.
+
+    The engine knows paths but not files; an adapter that read the document from disk
+    fills in ``line`` and ``column`` so a person can jump straight to the mistake.
+    """
+
+    location: Location
+    message: str
+    line: int | None = None
+    column: int | None = None
+    step_id: str | None = None
+    """The id of the step the location is inside, when there is one, to orient the reader."""
+
+    @property
+    def path(self) -> str:
+        """The location rendered the way people write it, such as ``steps[3].value``."""
+        return format_location(self.location)
+
+
+def format_location(location: Location) -> str:
+    """Render a document path as dotted keys with bracketed indexes."""
+    rendered = ""
+    for part in location:
+        if isinstance(part, int):
+            rendered += f"[{part}]"
+        else:
+            rendered += f".{part}" if rendered else part
+    return rendered
 
 
 def _rebuild_error(
@@ -72,4 +107,30 @@ class BudgetExceeded(MendworkError):
 
 
 class WorkflowValidationError(MendworkError):
-    """A workflow definition is structurally invalid or internally inconsistent."""
+    """A workflow definition is structurally invalid or internally inconsistent.
+
+    Every problem found is reported at once, as ``issues``, so fixing a file is one edit
+    session rather than a loop of one error per attempt.
+    """
+
+    def __init__(
+        self, message: str, *, issues: Iterable[ValidationIssue] = (), **context: object
+    ) -> None:
+        self._issues = tuple(issues)
+        # Kept in the context too, so pickling (which replays the context) restores them.
+        if self._issues:
+            context = {"issues": self._issues, **context}
+        super().__init__(message, **context)
+
+    @property
+    def issues(self) -> tuple[ValidationIssue, ...]:
+        """The individual problems, in document order where the document gave one."""
+        return self._issues
+
+
+class UnsupportedSchemaVersion(WorkflowValidationError):
+    """A workflow file declares a ``schema_version`` this build of Mendwork cannot read."""
+
+
+class VersionConflict(MendworkError):
+    """A publish conflicts with stored versions: the number is taken or the parent is missing."""

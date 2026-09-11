@@ -1,0 +1,13 @@
+{
+  "workflow_id": "download_report",
+  "targets": {
+    "fill_email": "login.email",
+    "fill_password": "login.password",
+    "sign_in": "login.sign_in",
+    "open_reports": "dashboard.open_reports",
+    "fill_date_from": "reports.date_from",
+    "fill_date_to": "reports.date_to",
+    "apply_filter": "reports.apply_filter",
+    "download_csv": "reports.download_csv"
+  }
+}

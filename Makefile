@@ -3,7 +3,7 @@ NPM ?= npm
 
 .DEFAULT_GOAL := check
 
-.PHONY: install fmt lint typecheck imports jscheck test check portal chaos-pairs bench live-providers
+.PHONY: install fmt lint typecheck imports jscheck test check schema portal chaos-pairs bench live-providers
 
 # Run `nvm use` first: .npmrc sets engine-strict, so npm ci fails loudly on the wrong Node.
 install:
@@ -32,9 +32,14 @@ jscheck:
 test:
 	$(UV) run pytest --cov --cov-report=term-missing
 	$(UV) run coverage report --include="*/mendwork/engine/*" --fail-under=90
+	$(UV) run coverage report --include="*/mendwork/engine/domain/*" --fail-under=95
 	$(UV) run coverage report --fail-under=85
 
 check: lint typecheck imports jscheck test
+
+# Regenerates the workflow JSON Schema from the domain models; a test fails when it is stale.
+schema:
+	$(UV) run mendwork schema --output schemas/workflow.schema.json
 
 portal:
 	$(UV) run python -m mendwork.apps.portal --root chaos-portal

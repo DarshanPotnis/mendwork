@@ -113,6 +113,8 @@ class Settings(BaseSettings):
     portal_host: str = "127.0.0.1"
     # 0 asks the operating system for any free port.
     portal_port: int = Field(default=8765, ge=0, le=65535)
+    # Largest workflow file accepted, checked before parsing: a denial-of-service guard.
+    workflow_max_bytes: int = Field(default=1024 * 1024, ge=4096, le=16 * 1024 * 1024)
 
     @classmethod
     def settings_customise_sources(

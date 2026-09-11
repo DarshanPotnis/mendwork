@@ -13,7 +13,11 @@ from mendwork.engine.errors import (
     PolicyViolation,
     ProviderError,
     TargetNotFound,
+    UnsupportedSchemaVersion,
+    ValidationIssue,
+    VersionConflict,
     WorkflowValidationError,
+    format_location,
 )
 
 ERROR_TYPES: list[type[MendworkError]] = [
@@ -26,6 +30,8 @@ ERROR_TYPES: list[type[MendworkError]] = [
     PolicyViolation,
     BudgetExceeded,
     WorkflowValidationError,
+    UnsupportedSchemaVersion,
+    VersionConflict,
 ]
 
 
@@ -70,3 +76,41 @@ def test_repr_shows_message_and_context() -> None:
     error = TargetNotFound("no match", step_id="step-3")
 
     assert repr(error) == "TargetNotFound(message='no match', context={'step_id': 'step-3'})"
+
+
+def test_validation_errors_carry_their_issues_through_pickling() -> None:
+    issue = ValidationIssue(
+        ("steps", 3, "value"), "is required", line=12, column=5, step_id="sign_in"
+    )
+    error = UnsupportedSchemaVersion("unsupported", issues=[issue], found=2, supported=(1,))
+
+    restored = pickle.loads(pickle.dumps(error))  # noqa: S301 - our own in-memory payload
+
+    assert type(restored) is UnsupportedSchemaVersion
+    assert isinstance(restored, WorkflowValidationError)
+    assert restored.issues == (issue,)
+    assert dict(restored.context) == {"issues": (issue,), "found": 2, "supported": (1,)}
+
+
+def test_a_workflow_validation_error_without_issues_has_none() -> None:
+    assert WorkflowValidationError("broken").issues == ()
+
+
+@pytest.mark.parametrize(
+    ("location", "rendered"),
+    [
+        ((), ""),
+        (("steps",), "steps"),
+        (("steps", 3, "value", "name"), "steps[3].value.name"),
+        ((0, "a"), "[0].a"),
+    ],
+)
+def test_locations_render_as_people_write_them(
+    location: tuple[str | int, ...], rendered: str
+) -> None:
+    assert format_location(location) == rendered
+    assert ValidationIssue(location, "message").path == rendered
+
+
+def test_version_conflict_is_not_a_validation_error() -> None:
+    assert not issubclass(VersionConflict, WorkflowValidationError)

@@ -124,11 +124,11 @@ Read ARCHITECTURE.md §5, §9. Present a plan and wait for approval.
 
 - Implement src/mendwork/engine/domain exactly per ARCHITECTURE.md §5: frozen Pydantic v2 models, StrEnums, discriminated unions for Checkpoint and ValueRef, typed IDs.
 - Workflow files are YAML on disk, validated through the models. Generate schemas/workflow.schema.json from the models via a make target, and add a test that fails if the committed schema is stale.
-- ValueRef: literal, run input (`inputs.<name>`), secret reference (`secrets.<name>`). Validation rejects literal values on FILL steps whose target looks like a password/secret field.
+- ValueRef: literal, run input (`{kind: input, name: ...}`), secret reference (`{kind: secret, name: ...}`). Validation rejects literal and input values on FILL steps whose target looks like a password/secret field.
 - Version lineage: a pure function creates a child WorkflowVersion from a parent plus a ChangeRecord; parents are never mutated; version numbers are strictly increasing.
-- Ports as typing.Protocol in engine/ports: BrowserPort, ModelPort, WorkflowStore, ArtifactStore, EventSink, SecretResolver, Clock — method signatures only.
-- In-memory fakes for every port in tests/fakes/.
-- adapters/storage_fs: filesystem WorkflowStore with atomic writes (write temp file, fsync, rename) and one directory per workflow with one file per version.
+- Ports as typing.Protocol in engine/ports, only those this phase uses: WorkflowStore and Clock. BrowserPort, ArtifactStore, EventSink, and SecretResolver arrive in Phase 3 and ModelPort in Phase 6, so real callers shape their signatures.
+- In-memory fakes for those ports in tests/fakes/.
+- adapters/storage_fs: filesystem WorkflowStore with atomic, never-overwriting publishes (write temp file, fsync, link to the final name, fsync the directory) and one directory per workflow with one file per version. See ADR 0006.
 - Hand-write workflows/examples/download_report.yaml for the chaos portal (login → reports → set date range → download CSV) with realistic fingerprints and checkpoints.
 
 Tests: YAML ⇄ model round-trip (hypothesis); readable validation errors for common mistakes; version lineage rules; atomic-write behaviour on simulated failure; the example workflow validates.
@@ -144,9 +144,12 @@ Acceptance: make check passes; engine/domain coverage ≥ 95%.
 Phase 3 — Replay with exact selectors and verification. No healing yet.
 Read ARCHITECTURE.md §6, §8 (checkpoints only). Present a plan and wait for approval.
 
-- adapters/browser_playwright implementing BrowserPort with async Playwright: one BrowserContext per run, per-run downloads directory, configurable headless/headed, Playwright tracing saved on failure.
-- engine/replay: executes a WorkflowVersion step by step using Rung 0 only (recorded selectors in ranked order). Exactly-one-visible-match rule: 0 → TargetNotFound, >1 → AmbiguousTarget.
-- engine/verification: pre-action checks (visible, enabled, action-compatible) and evaluation of every Checkpoint kind, with per-checkpoint timeouts. No sleeps.
+- engine/ports: BrowserPort, ArtifactStore, EventSink, and SecretResolver, shaped by this phase's callers.
+- adapters/browser_playwright implementing BrowserPort with async Playwright (reusing locators.py, the one mapping from domain selectors to Playwright locators): one BrowserContext per run, per-run downloads directory, configurable headless/headed, Playwright tracing saved on failure.
+- engine/replay: executes a WorkflowVersion step by step using Rung 0 only (recorded selectors in ranked order). Exactly-one-visible-match rule at every `within` level: 0 → TargetNotFound, >1 → AmbiguousTarget.
+- Rung 0 identity check (ARCHITECTURE.md §7): an exactly-one match whose role or accessible name differs from the fingerprint is a drifted match, never a plain success. It must pass the same acceptance rules as a heal (danger keywords, risk policy, verification) before any action. This phase has no acceptance rules yet, so a drifted match stops the step with the evidence (recorded vs live role and name). Harmless drift ("Download CSV" → "Export data") becomes acceptable in Phase 5; dangerous drift ("Download CSV" → "Delete data") must always abstain.
+- engine/verification: pre-action checks (visible, enabled, action-compatible) and evaluation of every Checkpoint kind, with per-checkpoint timeouts (the runtime default from Settings when a checkpoint has none). `no_error_banner` is checked once, after the step's other checkpoints pass. No sleeps.
+- A `field_has_value` checkpoint for FILL steps (a schema addition with its ADR): for a literal or input value it compares the field's value; for a secret it checks only that the field is non-empty. It never reads a secret back for comparison, logging, or evidence.
 - Transient retry policy for navigation errors: bounded exponential backoff, separate from healing, configured via Settings.
 - Run, StepResult records; events step_started / step_succeeded / step_failed / checkpoint_passed / checkpoint_failed via EventSink; adapter that writes JSON lines to stdout or a file.
 - adapters/artifacts_local: screenshot after each step; trace + DOM snapshot on failure; paths recorded on StepResult.
@@ -156,6 +159,7 @@ Read ARCHITECTURE.md §6, §8 (checkpoints only). Present a plan and wait for ap
 Tests:
 - integration: chaos portal level 0 → run succeeds end to end, CSV downloaded and checkpoint passes
 - integration: only=change_ids_classes → fails with TargetNotFound at the correct step, artifacts exist
+- integration: only=dangerous_rename on reports.download_csv (the target keeps its id and data-testid) → the run stops with a drifted match and `window.__chaos.wrongActions` stays empty
 - verifier unit tests using page.set_content fixtures for every checkpoint kind (pass and fail)
 - secrets never appear in events or logs (assert on captured output)
 
@@ -170,19 +174,19 @@ Acceptance: make check passes; show the CLI output of both integration scenarios
 Phase 4 — Recorder.
 Read ARCHITECTURE.md §5, §8 (risk classification). Present a plan and wait for approval.
 
-- `mendwork record <start-url> --out <workflow.yaml>` opens a headed browser and captures click, fill, select, press, and download events via an injected script plus expose_binding.
+- `mendwork record <start-url> --out <workflow.yaml>` opens a headed browser and captures click, fill, select, and press events via an injected script plus expose_binding. A click that starts a download is recorded as a CLICK with a download_completed checkpoint; there is no download action.
 - The injected script lives in src/mendwork/adapters/browser_playwright/js/recorder.js, follows CLAUDE.md "Browser-side JavaScript standards" (self-contained, `// @ts-check`, JSDoc types, single namespaced global, never reads password values), ships as package data, is loaded at runtime, and is added to the tsconfig include so `make jscheck` covers it.
 - For each target build a full Fingerprint and a ranked selector list (test_id > role_name > label > placeholder > text > css). Accessible role/name must be consistent with how Playwright's locators resolve them — verify each generated selector resolves to exactly one element at record time and drop those that don't.
 - Merge consecutive keystrokes into a single FILL; ignore focus-only clicks; handle navigation between steps.
 - Auto-propose checkpoints per step: URL change, newly visible heading/landmark, download event.
 - Draft intent sentence from role + accessible name (no AI), e.g. "Click the 'Download CSV' button".
-- Risk classification as a pure function (engine/safety/risk.py) using configurable danger keywords; stricter level when unsure.
-- FILL on password/secret-like fields writes a secret reference, prompting for the secret name at the end of recording.
+- Risk classification by consequence as a pure function (engine/safety/risk.py): SAFE reads or navigates only (links, filters, downloads, opening details); CAUTION changes session or unsaved form state reversibly (fills, sign in, sign out); IRREVERSIBLE changes stored data or affects others (submitting orders, paying, deleting, sending, saving settings). Form submission and configurable danger keywords are signals, not rules; when classification is unsure, choose the stricter level.
+- FILL on password/secret-like fields writes a secret reference, prompting for the secret name at the end of recording. Use the domain's detect_secret_field on the fingerprint, and also the live element (a field masked by CSS has no telling attribute).
 
 Tests:
 - recording driven by scripted Playwright interactions (not manual) against chaos portal level 0 produces YAML matching a golden file (ignoring timestamps)
 - the recorded workflow replays successfully with `mendwork run`
-- risk classification table-driven tests, including tricky cases ("Submit feedback", "Remove filter")
+- risk classification table-driven tests, including tricky cases ("Submit feedback", "Remove filter", "Apply filter" as a form submit that stays SAFE, "Sign in" as CAUTION, "Save settings" as IRREVERSIBLE)
 - the recorder.js asset loads from an installed wheel, not just from the source tree
 
 Acceptance: make check passes; demonstrate record → run green.
@@ -198,7 +202,8 @@ Read ARCHITECTURE.md §7 (Rungs 0–2), §8 (recovery). Present a plan and wait 
 
 - engine/healing/candidates.py: candidate extraction contract (what the browser adapter must return: role, name, label, text, attributes, nearby text, structural path, bbox) and filtering by action compatibility and visibility. The browser adapter implements extraction in js/extract_candidates.js (same JavaScript standards, covered by `make jscheck`); the engine only consumes the data.
 - engine/healing/scoring.py: pure per-feature similarity functions and weighted total; weights, T_ACCEPT, M_MARGIN from Settings.
-- engine/healing/ladder.py: Rung 0 → 1 → 2; accept only if score ≥ T_ACCEPT and margin ≥ M_MARGIN; otherwise abstain (Rung 3 comes next phase). Emit HealAttempt with top-5 candidates and per-feature breakdowns.
+- engine/healing/ladder.py: Rung 0 → 1 → 2; accept only if score ≥ T_ACCEPT and margin ≥ M_MARGIN; otherwise abstain (Rung 3 comes next phase). Drifted Rung 0 matches go through the same acceptance rules. Emit HealAttempt with top-5 candidates and per-feature breakdowns.
+- Authentication steps (filling a credential or submitting one) get at most one heal attempt, to avoid account lockouts (ADR 0006).
 - Replayer integration: healed steps must pass verification; SAFE/CAUTION recovery tries the next candidate after restoring the last good checkpoint, up to MAX_HEAL_ATTEMPTS; IRREVERSIBLE steps with a healed target return AWAITING_APPROVAL (approval flow arrives in Phase 7 — for now the run stops in that state).
 - benchmarks/fixtures/dom/: a script that generates before/after DOM snapshots from the chaos portal for every mutation and several seeds, with ground truth.
 - Fixture test suite: heal_expected → correct element chosen; abstain_expected → abstain. A wrong choice fails the test.

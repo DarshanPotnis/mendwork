@@ -22,6 +22,7 @@ forbidden_modules =
     httpx
     fastapi
     sqlalchemy
+    yaml
 
 [importlinter:contract:engine-owns-no-settings]
 name = Engine does not import settings

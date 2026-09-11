@@ -116,6 +116,7 @@ Both are plain JavaScript with **no build step**, type-checked by TypeScript.
 | `make jscheck` | TypeScript type-check of all browser-side JavaScript (from Phase 1) |
 | `make test` | pytest with coverage gates |
 | `make check` | lint + typecheck + imports + jscheck + test (must pass before any phase is done) |
+| `make schema` | Regenerate `schemas/workflow.schema.json` from the domain models (a test fails when it is stale) |
 | `make portal` | Serve the chaos portal locally |
 | `make chaos-pairs` | Regenerate `benchmarks/chaos/heal_pairs.json`, the seed for every heal mutation–target pair |
 | `make bench` | Run the benchmark and build the scorecard (Phase 9+) |

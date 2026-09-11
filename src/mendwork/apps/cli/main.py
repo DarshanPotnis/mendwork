@@ -9,6 +9,8 @@ from typing import Annotated
 
 import typer
 
+from mendwork.apps.cli.schema import schema
+from mendwork.apps.cli.validate import validate
 from mendwork.observability import configure_logging
 from mendwork.settings import Settings
 
@@ -17,6 +19,8 @@ app = typer.Typer(
     help="Self-healing browser automation: record once, replay free, repair cheaply.",
     no_args_is_help=True,
 )
+app.command()(validate)
+app.command()(schema)
 
 
 def _print_version(requested: bool) -> None:

@@ -84,7 +84,7 @@ mendwork/
 ├── BUILD_PLAN.md                 # phased build prompts
 ├── pyproject.toml                # uv-managed, single package, src layout
 ├── uv.lock
-├── Makefile                      # install fmt lint typecheck imports test check portal bench
+├── Makefile                      # install fmt lint typecheck imports test check schema portal bench
 ├── .importlinter                 # architecture boundary contracts
 ├── package.json                  # dev-only JS tooling (TypeScript), no runtime deps
 ├── package-lock.json
@@ -99,12 +99,12 @@ mendwork/
 │   ├── adr/                      # one file per architecture decision
 │   ├── security.md               # Phase 12
 │   └── deploy.md                 # Phase 12
-├── schemas/workflow.schema.json  # generated from domain models
-├── workflows/examples/           # sample workflows for the chaos portal
+├── schemas/workflow.schema.json  # generated from domain models (`make schema`); a test keeps it fresh
+├── workflows/examples/           # hand-written sample workflows for the chaos portal
 ├── src/mendwork/
 │   ├── engine/
-│   │   ├── domain/               # pure models: workflow, step, fingerprint, run, heal
-│   │   ├── ports/                # typing.Protocol interfaces
+│   │   ├── domain/               # pure models: workflow, step, selector, fingerprint, checkpoint, lineage
+│   │   ├── ports/                # typing.Protocol interfaces, added by the phase that first uses each
 │   │   ├── recording/
 │   │   ├── replay/
 │   │   ├── healing/              # candidates.py, scoring.py, ladder.py, prompt.py
@@ -116,12 +116,13 @@ mendwork/
 │   │   ├── browser_playwright/
 │   │   │   └── js/               # injected page scripts: recorder, candidate extraction, set-of-marks
 │   │   ├── models/               # fake.py, ollama.py, gemini.py, openai_compatible.py, anthropic.py
-│   │   ├── storage_fs/
+│   │   ├── workflow_yaml/        # strict YAML decoding with line numbers, deterministic encoding
+│   │   ├── storage_fs/           # WorkflowStore on files: one directory per workflow, no-overwrite publish
 │   │   ├── storage_postgres/     # Phase 10
 │   │   ├── artifacts_local/
 │   │   └── secrets_env/
 │   ├── apps/
-│   │   ├── cli/                  # Typer: record, run, approve, history, diff, rollback, bench
+│   │   ├── cli/                  # Typer: validate, schema, record, run, approve, history, diff, rollback, bench
 │   │   ├── api/                  # Phase 10: FastAPI
 │   │   ├── portal/               # chaos portal server, shared by `make portal` and browser tests
 │   │   └── worker/               # Phase 10
@@ -135,6 +136,7 @@ mendwork/
 │   └── types/                    # type-only .d.ts files (e.g. window.__chaos)
 ├── benchmarks/
 │   ├── chaos/                    # seed suites: heal_pairs.json + its generator (`make chaos-pairs`)
+│   │   └── workflow_targets/     # per example workflow: step id → chaos target key (ground truth)
 │   ├── real_apps/                # release A → release B harness
 │   └── fixtures/dom/             # before/after DOM snapshots for fast tests
 ├── dashboard/                    # Phase 11: React + Vite + TypeScript
@@ -151,37 +153,60 @@ It is a single Python package with enforced internal boundaries. We avoid a mult
 
 ## 5. Domain model
 
-All domain models are **Pydantic v2, frozen, fully typed**. Variants use discriminated unions, not loose dicts.
+All domain models are **Pydantic v2, frozen, closed to unknown fields (`extra="forbid"`), and fully typed**. Variants are discriminated unions, never loose dicts, and validation errors never echo input values. Rationale for everything below: ADR 0006.
+
+### Workflow files
+
+- **One YAML file per version**, decoded by `adapters/workflow_yaml` and validated by the domain models. The engine never imports YAML.
+- **`schema_version`** (currently 1) is required. An unsupported version fails with `UnsupportedSchemaVersion` before anything else is checked.
+- **Identifiers** (`WorkflowId`, `StepId`, `InputName`, `SecretName`) are lowercase slugs of at most 64 characters, `^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$`. Step ids are unique within a workflow and stable across versions: a heal changes a step's target, never its id.
+- **Format bounds** live in `engine/domain/limits.py`, not Settings, because a file valid in one deployment is valid in all:
+  - text and list lengths;
+  - selector scope depth (2);
+  - checkpoint timeouts (1–600000 ms);
+  - 1–500 steps.
+
+  The canonical dump omits defaults, so changing a bound or a default is a schema change.
+- **`schemas/workflow.schema.json`** is generated from the models with `make schema`.
 
 ```python
 class ActionType(StrEnum):
-    NAVIGATE = "navigate"; CLICK = "click"; FILL = "fill"
-    SELECT = "select"; PRESS = "press"; DOWNLOAD = "download"
+    NAVIGATE = "navigate"; CLICK = "click"; FILL = "fill"; SELECT = "select"; PRESS = "press"
+    # No DOWNLOAD: a download is a CLICK verified by a download_completed checkpoint.
 
-class RiskLevel(StrEnum):
-    SAFE = "safe"                  # navigation, filters, reading
-    CAUTION = "caution"            # filling fields without submitting
-    IRREVERSIBLE = "irreversible"  # submit, pay, delete, send, confirm
+class RiskLevel(StrEnum):              # classified by consequence, see §8
+    SAFE = "safe"                      # reads or navigates only
+    CAUTION = "caution"                # changes session or unsaved form state, reversibly
+    IRREVERSIBLE = "irreversible"      # changes stored data or affects others
 
-class Selector(BaseModel):
-    strategy: Literal["test_id", "role_name", "label", "placeholder", "text", "css"]
-    value: str
+# Ranked ways to find an element. Every variant may be scoped with `within`.
+Selector = Annotated[ByTestId | ByRole | ByLabel | ByPlaceholder | ByText | ByCss,
+                     Field(discriminator="strategy")]
+
+class ByRole(BaseModel):
+    strategy: Literal["role_name"]
+    role: AriaRole                     # exactly the roles Playwright's role locator accepts
+    name: str
+    exact: bool = True                 # False: case-insensitive substring
+    within: Selector | None = None     # search only inside the one element this finds; depth ≤ 2
 
 class Fingerprint(BaseModel):
     """Everything we know about a target element, so one changed clue doesn't lose it."""
     tag: str
-    role: str | None
+    role: AriaRole | None
     accessible_name: str | None
     text: str | None
-    attributes: dict[str, str]        # allowlisted: id, name, data-testid, aria-label, placeholder, type, href-path
     label_text: str | None
-    nearby_text: tuple[str, ...]      # nearest heading, preceding label, row/column headers
-    structural_path: str              # simplified ancestor chain
-    bbox: NormalizedBox | None        # position relative to viewport, 0..1
-    selectors: tuple[Selector, ...]   # ranked best-first
+    attributes: FingerprintAttributes  # allowlist: id, name, type, autocomplete, placeholder,
+                                       #   aria_label, data_testid, href (path only)
+    nearby_text: tuple[str, ...]       # ≤ 8: nearest heading, preceding label, row/column headers
+    structural_path: str               # simplified ancestor chain
+    bbox: NormalizedBox | None         # relative to the whole document; 0..1, x+width and y+height ≤ 1
+    selectors: tuple[Selector, ...]    # 1–10, ranked best-first, no duplicates
 
-# Values typed into fields — secrets are NEVER stored inline
+# Where a value comes from; secrets are NEVER stored inline
 ValueRef = Annotated[LiteralValue | InputValue | SecretValue, Field(discriminator="kind")]
+InputDeclaration = Annotated[TextInput | DateInput | UrlInput, Field(discriminator="kind")]
 
 # What "this step worked" means
 Checkpoint = Annotated[
@@ -189,24 +214,34 @@ Checkpoint = Annotated[
     Field(discriminator="kind"),
 ]
 
-class Step(BaseModel):
+# One model per action, so each action's shape is enforced by its type
+Step = Annotated[NavigateStep | ClickStep | FillStep | SelectStep | PressStep,
+                 Field(discriminator="action")]
+
+class FillStep(BaseModel):
     id: StepId
-    intent: str                        # "Click the Download CSV button"
-    action: ActionType
-    target: Fingerprint | None         # None for NAVIGATE
-    value: ValueRef | None
-    checkpoints: tuple[Checkpoint, ...]
+    intent: str                        # "Fill the 'Email address' field"
+    action: Literal["fill"]
     risk: RiskLevel
+    target: Fingerprint
+    value: ValueRef
+    checkpoints: tuple[Checkpoint, ...]   # ≤ 10
+
+# Why a version exists. Phase 8 adds a heal variant.
+ChangeRecord = Annotated[ManualEdit | Rollback, Field(discriminator="kind")]
 
 class WorkflowVersion(BaseModel):
+    schema_version: Literal[1]
     workflow_id: WorkflowId
-    version: int
-    parent_version: int | None
-    steps: tuple[Step, ...]
-    change: ChangeRecord | None        # why this version exists
-    created_at: datetime
+    version: int                       # ≥ 1
+    parent_version: int | None         # None for version 1, otherwise version − 1
+    created_at: datetime               # UTC, from the Clock port
+    change: ChangeRecord | None        # None for version 1, required otherwise
+    inputs: tuple[InputDeclaration, ...]
+    secrets: tuple[SecretName, ...]
+    steps: tuple[Step, ...]            # 1–500
 
-class HealAttempt(BaseModel):
+class HealAttempt(BaseModel):          # Phase 5
     step_id: StepId
     rung: Literal[0, 1, 2, 3]
     candidates: tuple[ScoredCandidate, ...]   # top N with per-feature breakdown
@@ -217,9 +252,67 @@ class HealAttempt(BaseModel):
     outcome: Literal["resolved", "ambiguous", "not_found", "abstained", "budget_exceeded"]
 ```
 
+### Step shapes
+
+| Action | `target` | `value` | Other |
+|---|---|---|---|
+| navigate | none | literal absolute http(s) URL, or a url input | |
+| click | required | none | |
+| fill | required | literal, input, or secret | credential rule (below) |
+| select | required | literal or input: the option's visible label | |
+| press | optional (else the focused page) | none | `key`: `Modifier+…+Key`, from a closed set of named keys or one printable character |
+
+### Inputs, secrets, and credentials
+
+- **Declarations.** A workflow declares its run inputs and its secret names.
+  - Every reference must match a declaration, and every declaration must be used.
+  - An input and a secret cannot share a name.
+  - Secrets are allowed only in FILL. A navigate input must be of kind url.
+- **Input kinds:**
+  - `text`;
+  - `date`, written `YYYY-MM-DD`;
+  - `url`, an absolute http(s) URL with no embedded credentials.
+- **Required and optional inputs.** A required input has no default. An optional input (`required: false`) must declare a default that is valid for its kind. Steps are never skipped because an input is missing.
+- **The credential rule.** A FILL whose target looks like a credential field must use a secret reference: a literal would be stored in the file, and an input in run history. Detection is a pure function, `detect_secret_field(fingerprint)`, and returns the reason:
+  - type `password`;
+  - a credential `autocomplete` value;
+  - credential words in the field's names and labels.
+
+  Non-credential input types such as email and date always win. When unsure, detection errs towards "secret".
+
+### Checkpoints
+
+- **Kinds and fields:**
+  - `url_matches`: `mode` (exact | prefix | regex) and `pattern`;
+  - `element_visible`: `selector`;
+  - `text_present`: `text`;
+  - `download_completed`: `filename_pattern`;
+  - `response_received`: `mode`, `pattern`, `status_min`, `status_max`;
+  - `no_error_banner`: optional `selector`.
+- **Patterns** use Python `re` syntax, must match the whole string, and are compiled when the workflow loads.
+- **`timeout_ms` is optional**; absent means the runtime default, so the format never hardcodes timing. `no_error_banner` has no timeout: it is checked once, after the step's other checkpoints pass.
+
+### Versions
+
+- **Lineage.** Version 1 has no parent and no change record. Each later version is its parent's number + 1 and records a `ChangeRecord`. A rollback restores at most version − 2.
+- **Deriving children.** Children come only from pure functions, one per change kind: `edit_version` and `roll_back_version`, plus a heal function in Phase 8. They never mutate the parent, keep every step id in order, and take `created_at` from the `Clock` port.
+
 **Run states:** `QUEUED → RUNNING → SUCCEEDED | FAILED | CANCELLED | AWAITING_APPROVAL | NEEDS_REVIEW`
 
-**Error hierarchy** (`engine/errors.py`): `MendworkError` → `TargetNotFound`, `AmbiguousTarget`, `CheckpointFailed`, `NavigationError`, `ProviderError`, `PolicyViolation`, `BudgetExceeded`, `WorkflowValidationError`.
+**Error hierarchy** (`engine/errors.py`):
+- `MendworkError`
+  - `TargetNotFound`
+  - `AmbiguousTarget`
+  - `CheckpointFailed`
+  - `NavigationError`
+  - `ProviderError`
+  - `PolicyViolation`
+  - `BudgetExceeded`
+  - `VersionConflict`: a version number is taken, or its parent is missing
+  - `WorkflowValidationError`, which carries every `ValidationIssue` (path, message, line, column, step id)
+    - `UnsupportedSchemaVersion`
+
+**Ports so far:** `Clock` and `WorkflowStore`. The others (`BrowserPort`, `ArtifactStore`, `EventSink`, `SecretResolver`, `ModelPort`) are introduced by the phase that first calls them. A store instance is bound to one tenant when it is constructed, so its methods take no workspace.
 
 ---
 
@@ -247,11 +340,24 @@ Each rung is more expensive than the one before it. We only climb when the rung 
 
 | Rung | What it does | Cost |
 |---|---|---|
-| **0** | Try the recorded selectors in ranked order. A selector must match **exactly one** visible element: zero matches is not-found, and more than one is ambiguous, never a success. | Free |
+| **0** | Try the recorded selectors in ranked order. A selector must match **exactly one** visible element (every `within` level included): zero matches is not-found, and more than one is ambiguous, never a success. The one element must then pass the identity check below. | Free |
 | **1** | Try alternate selectors derived from the fingerprint (test id, role + name, label, placeholder, text). | Free |
 | **2** | Similarity scoring over live candidates (below). | Free |
 | **3** | The model chooses among the top-K candidates from Rung 2. | Cents or $0 local |
 | **4** | Abstain: pause for a human or fail with a full evidence report. | Free |
+
+### Rung 0 — identity check (drifted matches)
+
+A selector that resolves to exactly one element is a candidate, not yet a success.
+
+- **Same element:** the element's role and accessible name match the fingerprint, so the step proceeds.
+- **Drifted match:** either one differs. A drifted match must pass the same acceptance rules as a heal before any action:
+  - danger keywords;
+  - the risk policy (IRREVERSIBLE needs approval);
+  - verification by the step's checkpoints.
+- **Examples:** harmless drift such as "Download CSV" → "Export data" can pass; "Download CSV" → "Delete data" must abstain.
+- **Why this exists:** ids and test ids routinely survive a relabel. The chaos portal's `dangerous_rename` keeps both, so `test_id` and `css` selectors still find the renamed control exactly once.
+- **Phasing:** Phase 3, which has no acceptance rules yet, stops on a drifted match with its evidence. Phase 5 routes drifted matches through heal acceptance.
 
 ### Rung 2 — similarity scoring
 
@@ -288,7 +394,7 @@ Every rung emits a `HealAttempt` event with its full evidence, so every decision
 
 ### Checkpoints
 
-Recording auto-proposes checkpoints: a URL change, a new heading or landmark becoming visible, a download event, or a network response. Users can edit them. Every checkpoint has a timeout and relies on Playwright's auto-waiting; **there are no fixed sleeps anywhere.**
+Recording auto-proposes checkpoints: a URL change, a new heading or landmark becoming visible, a download event, or a network response. Users can edit them. Every waiting checkpoint has a timeout (its own `timeout_ms` or the runtime default) and relies on Playwright's auto-waiting. `no_error_banner` does not wait: it is checked once, after the step's other checkpoints pass. **There are no fixed sleeps anywhere.**
 
 ### Recovery policy
 
@@ -298,9 +404,21 @@ Recording auto-proposes checkpoints: a URL change, a new heading or landmark bec
 | CAUTION | Same as SAFE, and reset the affected form state first. |
 | IRREVERSIBLE | Never auto-retry. Heals require approval **before** acting. If a run is interrupted after an irreversible action executed, it becomes `NEEDS_REVIEW` and is never re-queued automatically. |
 
+**Authentication steps** (steps that fill a credential or submit one) get at most **one** heal attempt, whatever their risk level. Repeated attempts can lock the account.
+
 ### Risk classification
 
-A step is auto-classified as `IRREVERSIBLE` when it submits a form or its name matches configurable danger keywords (delete, remove, pay, purchase, submit, send, confirm, transfer). Fills are `CAUTION`; everything else is `SAFE`. **When unsure, choose the stricter level.** Users can raise a step's risk level but not lower an auto-detected `IRREVERSIBLE` without an audit entry.
+Risk is classified **by consequence**, not by mechanism:
+
+| Level | What the action changes | Examples |
+|---|---|---|
+| `SAFE` | Nothing: it reads or navigates only | links, filters, downloads, opening details |
+| `CAUTION` | Session or unsaved form state, reversibly | fills, sign in, sign out |
+| `IRREVERSIBLE` | Stored data, or something other people see | submitting orders, paying, deleting, sending, saving settings |
+
+- **Signals, not rules.** Submitting a form and a name matching configurable danger keywords (delete, remove, pay, purchase, submit, send, confirm, transfer) are signals. A filter form is submitted and is still `SAFE`; a plain button named "Delete" is `IRREVERSIBLE`.
+- **When classification is unsure, choose the stricter level.**
+- **Overrides.** Users can raise a step's risk level, but cannot lower an auto-detected `IRREVERSIBLE` without an audit entry.
 
 ### Egress policy (SSRF protection)
 

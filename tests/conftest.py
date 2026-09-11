@@ -10,7 +10,15 @@ from collections.abc import Callable, Iterator
 import click
 import pytest
 import structlog
+from hypothesis import settings
 from typer.testing import Result
+
+# Deterministic property tests: the same examples on every run and machine, no example
+# database carrying state between runs, and no wall-clock deadline to flake on slow CI.
+settings.register_profile(
+    "mendwork", derandomize=True, database=None, deadline=None, max_examples=100
+)
+settings.load_profile("mendwork")
 
 
 @pytest.fixture

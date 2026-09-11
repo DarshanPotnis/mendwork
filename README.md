@@ -41,6 +41,7 @@ make install   # Python env, npm tooling, Playwright Chromium, pre-commit hooks
 make check     # lint, typecheck, import contracts, JS type-check, and tests
 make portal    # serve the chaos portal at http://127.0.0.1:8765/
 make chaos-pairs  # regenerate the heal pair seed table after changing the portal
+make schema    # regenerate the workflow JSON Schema after changing the domain models
 ```
 
 Configuration is read from the environment with the `MENDWORK_` prefix. Copy
@@ -55,6 +56,22 @@ Configuration is read from the environment with the `MENDWORK_` prefix. Copy
 | `make jscheck` | TypeScript check of the chaos portal's JavaScript |
 | `make test` | Unit and browser tests with coverage gates |
 | `make check` | Everything above — must pass before any phase is done |
+| `make schema` | Regenerate `schemas/workflow.schema.json` from the domain models |
+
+## Workflows
+
+A workflow is a YAML file: declared inputs and secrets, then steps with ranked selectors,
+a fingerprint of each target, and checkpoints. Editors that read
+`schemas/workflow.schema.json` (VS Code with the recommended YAML extension) autocomplete
+and check it as you type. Examples for the chaos portal live in
+[`workflows/examples/`](workflows/examples/).
+
+```sh
+uv run mendwork validate workflows/examples/download_report.yaml
+```
+
+`validate` prints a one-line summary, or every problem as `file:line:column: path: message`
+and exits 1.
 
 ## Documentation
 
@@ -66,5 +83,5 @@ Configuration is read from the environment with the `MENDWORK_` prefix. Copy
 
 ## Status
 
-Phase 1 of 12: the chaos portal, Mendwork's demo target and benchmark ground truth. The
-engine itself starts at Phase 2.
+Phase 2 of 12: the domain model and workflow format. Workflows can be validated and
+stored as immutable versions; replaying them in a browser arrives in Phase 3.
