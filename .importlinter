@@ -1,0 +1,40 @@
+[importlinter]
+root_packages =
+    mendwork
+include_external_packages = True
+
+[importlinter:contract:engine-owns-no-shells]
+name = Engine does not import adapters or apps
+type = forbidden
+source_modules =
+    mendwork.engine
+forbidden_modules =
+    mendwork.adapters
+    mendwork.apps
+
+[importlinter:contract:engine-owns-no-vendors]
+name = Engine does not import vendor libraries
+type = forbidden
+source_modules =
+    mendwork.engine
+forbidden_modules =
+    playwright
+    httpx
+    fastapi
+    sqlalchemy
+
+[importlinter:contract:engine-owns-no-settings]
+name = Engine does not import settings
+type = forbidden
+source_modules =
+    mendwork.engine
+forbidden_modules =
+    mendwork.settings
+
+[importlinter:contract:adapters-own-no-apps]
+name = Adapters do not import apps
+type = forbidden
+source_modules =
+    mendwork.adapters
+forbidden_modules =
+    mendwork.apps

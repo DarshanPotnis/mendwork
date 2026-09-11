@@ -1,0 +1,33 @@
+# Local configuration and credentials (.env.example is tracked on purpose)
+.env
+!.env.example
+.claude/settings.local.json
+
+# Run output
+artifacts/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Tool caches and reports
+.import_linter_cache/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node (dev-only tooling, from Phase 1)
+node_modules/
+
+# Build output
+build/
+dist/
+
+# macOS
+.DS_Store

@@ -122,7 +122,9 @@ mendwork/
 │   │   ├── cli/                  # Typer: record, run, approve, history, diff, rollback, bench
 │   │   ├── api/                  # Phase 10: FastAPI
 │   │   └── worker/               # Phase 10
-│   └── settings.py               # pydantic-settings, env prefix MENDWORK_
+│   ├── settings.py               # pydantic-settings, env prefix MENDWORK_
+│   ├── observability.py          # structlog setup: JSON in prod, stderr only, redaction
+│   └── py.typed                  # PEP 561 marker: this package ships type information
 ├── chaos-portal/                 # static demo site + seeded mutation engine (plain JS, @ts-check)
 │   └── types/                    # type-only .d.ts files (e.g. window.__chaos)
 ├── benchmarks/

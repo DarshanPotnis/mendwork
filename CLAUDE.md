@@ -109,7 +109,7 @@ Both are plain JavaScript with **no build step**, type-checked by TypeScript.
 |---|---|
 | `make install` | Create env with uv, install deps, install pre-commit hooks; from Phase 1 also `npm ci` and Playwright Chromium |
 | `make fmt` | ruff format + ruff check --fix |
-| `make lint` | ruff check (no fixes) |
+| `make lint` | ruff format --check + ruff check (no fixes) |
 | `make typecheck` | mypy --strict |
 | `make imports` | import-linter contracts |
 | `make jscheck` | TypeScript type-check of all browser-side JavaScript (from Phase 1) |
