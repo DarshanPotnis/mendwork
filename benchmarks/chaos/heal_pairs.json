@@ -1,0 +1,708 @@
+{
+  "description": "For every heal_expected mutation and every target it can take, a seed that makes ?seed=<seed>&only=<mutation> apply exactly that pair.",
+  "regenerate": "make chaos-pairs",
+  "pairs": [
+    {
+      "page": "dashboard",
+      "mutation": "button_link_swap",
+      "target": "dashboard.nav_dashboard",
+      "seed": 2
+    },
+    {
+      "page": "dashboard",
+      "mutation": "button_link_swap",
+      "target": "dashboard.nav_orders",
+      "seed": 0
+    },
+    {
+      "page": "dashboard",
+      "mutation": "button_link_swap",
+      "target": "dashboard.nav_reports",
+      "seed": 6
+    },
+    {
+      "page": "dashboard",
+      "mutation": "button_link_swap",
+      "target": "dashboard.open_orders",
+      "seed": 4
+    },
+    {
+      "page": "dashboard",
+      "mutation": "button_link_swap",
+      "target": "dashboard.open_reports",
+      "seed": 13
+    },
+    {
+      "page": "dashboard",
+      "mutation": "button_link_swap",
+      "target": "dashboard.sign_out",
+      "seed": 1
+    },
+    {
+      "page": "dashboard",
+      "mutation": "change_ids_classes",
+      "target": "dashboard.nav_dashboard",
+      "seed": 2
+    },
+    {
+      "page": "dashboard",
+      "mutation": "change_ids_classes",
+      "target": "dashboard.nav_orders",
+      "seed": 0
+    },
+    {
+      "page": "dashboard",
+      "mutation": "change_ids_classes",
+      "target": "dashboard.nav_reports",
+      "seed": 6
+    },
+    {
+      "page": "dashboard",
+      "mutation": "change_ids_classes",
+      "target": "dashboard.open_orders",
+      "seed": 4
+    },
+    {
+      "page": "dashboard",
+      "mutation": "change_ids_classes",
+      "target": "dashboard.open_reports",
+      "seed": 13
+    },
+    {
+      "page": "dashboard",
+      "mutation": "change_ids_classes",
+      "target": "dashboard.sign_out",
+      "seed": 1
+    },
+    {
+      "page": "dashboard",
+      "mutation": "extra_wrappers",
+      "target": "dashboard.nav_dashboard",
+      "seed": 2
+    },
+    {
+      "page": "dashboard",
+      "mutation": "extra_wrappers",
+      "target": "dashboard.nav_orders",
+      "seed": 0
+    },
+    {
+      "page": "dashboard",
+      "mutation": "extra_wrappers",
+      "target": "dashboard.nav_reports",
+      "seed": 6
+    },
+    {
+      "page": "dashboard",
+      "mutation": "extra_wrappers",
+      "target": "dashboard.open_orders",
+      "seed": 4
+    },
+    {
+      "page": "dashboard",
+      "mutation": "extra_wrappers",
+      "target": "dashboard.open_reports",
+      "seed": 13
+    },
+    {
+      "page": "dashboard",
+      "mutation": "extra_wrappers",
+      "target": "dashboard.sign_out",
+      "seed": 1
+    },
+    {
+      "page": "dashboard",
+      "mutation": "icon_only_aria",
+      "target": "dashboard.sign_out",
+      "seed": 0
+    },
+    {
+      "page": "dashboard",
+      "mutation": "move_container",
+      "target": "dashboard.sign_out",
+      "seed": 0
+    },
+    {
+      "page": "dashboard",
+      "mutation": "reorder_siblings",
+      "target": "dashboard.nav_dashboard",
+      "seed": 2
+    },
+    {
+      "page": "dashboard",
+      "mutation": "reorder_siblings",
+      "target": "dashboard.nav_orders",
+      "seed": 0
+    },
+    {
+      "page": "dashboard",
+      "mutation": "reorder_siblings",
+      "target": "dashboard.nav_reports",
+      "seed": 7
+    },
+    {
+      "page": "dashboard",
+      "mutation": "reorder_siblings",
+      "target": "dashboard.open_orders",
+      "seed": 4
+    },
+    {
+      "page": "dashboard",
+      "mutation": "reorder_siblings",
+      "target": "dashboard.open_reports",
+      "seed": 1
+    },
+    {
+      "page": "dashboard",
+      "mutation": "synonym_rename",
+      "target": "dashboard.nav_dashboard",
+      "seed": 2
+    },
+    {
+      "page": "dashboard",
+      "mutation": "synonym_rename",
+      "target": "dashboard.nav_orders",
+      "seed": 0
+    },
+    {
+      "page": "dashboard",
+      "mutation": "synonym_rename",
+      "target": "dashboard.nav_reports",
+      "seed": 6
+    },
+    {
+      "page": "dashboard",
+      "mutation": "synonym_rename",
+      "target": "dashboard.open_orders",
+      "seed": 4
+    },
+    {
+      "page": "dashboard",
+      "mutation": "synonym_rename",
+      "target": "dashboard.open_reports",
+      "seed": 13
+    },
+    {
+      "page": "dashboard",
+      "mutation": "synonym_rename",
+      "target": "dashboard.sign_out",
+      "seed": 1
+    },
+    {
+      "page": "login",
+      "mutation": "change_ids_classes",
+      "target": "login.email",
+      "seed": 1
+    },
+    {
+      "page": "login",
+      "mutation": "change_ids_classes",
+      "target": "login.password",
+      "seed": 3
+    },
+    {
+      "page": "login",
+      "mutation": "change_ids_classes",
+      "target": "login.sign_in",
+      "seed": 0
+    },
+    {
+      "page": "login",
+      "mutation": "extra_wrappers",
+      "target": "login.email",
+      "seed": 1
+    },
+    {
+      "page": "login",
+      "mutation": "extra_wrappers",
+      "target": "login.password",
+      "seed": 3
+    },
+    {
+      "page": "login",
+      "mutation": "extra_wrappers",
+      "target": "login.sign_in",
+      "seed": 0
+    },
+    {
+      "page": "login",
+      "mutation": "icon_only_aria",
+      "target": "login.sign_in",
+      "seed": 0
+    },
+    {
+      "page": "login",
+      "mutation": "reorder_siblings",
+      "target": "login.email",
+      "seed": 1
+    },
+    {
+      "page": "login",
+      "mutation": "reorder_siblings",
+      "target": "login.password",
+      "seed": 0
+    },
+    {
+      "page": "login",
+      "mutation": "synonym_rename",
+      "target": "login.email",
+      "seed": 1
+    },
+    {
+      "page": "login",
+      "mutation": "synonym_rename",
+      "target": "login.password",
+      "seed": 3
+    },
+    {
+      "page": "login",
+      "mutation": "synonym_rename",
+      "target": "login.sign_in",
+      "seed": 0
+    },
+    {
+      "page": "orders",
+      "mutation": "button_link_swap",
+      "target": "orders.back_to_orders",
+      "seed": 1
+    },
+    {
+      "page": "orders",
+      "mutation": "button_link_swap",
+      "target": "orders.nav_dashboard",
+      "seed": 8
+    },
+    {
+      "page": "orders",
+      "mutation": "button_link_swap",
+      "target": "orders.nav_orders",
+      "seed": 5
+    },
+    {
+      "page": "orders",
+      "mutation": "button_link_swap",
+      "target": "orders.nav_reports",
+      "seed": 0
+    },
+    {
+      "page": "orders",
+      "mutation": "button_link_swap",
+      "target": "orders.sign_out",
+      "seed": 4
+    },
+    {
+      "page": "orders",
+      "mutation": "button_link_swap",
+      "target": "orders.view_order",
+      "seed": 11
+    },
+    {
+      "page": "orders",
+      "mutation": "change_ids_classes",
+      "target": "orders.back_to_orders",
+      "seed": 1
+    },
+    {
+      "page": "orders",
+      "mutation": "change_ids_classes",
+      "target": "orders.nav_dashboard",
+      "seed": 8
+    },
+    {
+      "page": "orders",
+      "mutation": "change_ids_classes",
+      "target": "orders.nav_orders",
+      "seed": 5
+    },
+    {
+      "page": "orders",
+      "mutation": "change_ids_classes",
+      "target": "orders.nav_reports",
+      "seed": 0
+    },
+    {
+      "page": "orders",
+      "mutation": "change_ids_classes",
+      "target": "orders.sign_out",
+      "seed": 4
+    },
+    {
+      "page": "orders",
+      "mutation": "change_ids_classes",
+      "target": "orders.view_order",
+      "seed": 11
+    },
+    {
+      "page": "orders",
+      "mutation": "extra_wrappers",
+      "target": "orders.back_to_orders",
+      "seed": 1
+    },
+    {
+      "page": "orders",
+      "mutation": "extra_wrappers",
+      "target": "orders.nav_dashboard",
+      "seed": 8
+    },
+    {
+      "page": "orders",
+      "mutation": "extra_wrappers",
+      "target": "orders.nav_orders",
+      "seed": 5
+    },
+    {
+      "page": "orders",
+      "mutation": "extra_wrappers",
+      "target": "orders.nav_reports",
+      "seed": 0
+    },
+    {
+      "page": "orders",
+      "mutation": "extra_wrappers",
+      "target": "orders.sign_out",
+      "seed": 4
+    },
+    {
+      "page": "orders",
+      "mutation": "extra_wrappers",
+      "target": "orders.view_order",
+      "seed": 11
+    },
+    {
+      "page": "orders",
+      "mutation": "icon_only_aria",
+      "target": "orders.back_to_orders",
+      "seed": 1
+    },
+    {
+      "page": "orders",
+      "mutation": "icon_only_aria",
+      "target": "orders.sign_out",
+      "seed": 0
+    },
+    {
+      "page": "orders",
+      "mutation": "icon_only_aria",
+      "target": "orders.view_order",
+      "seed": 4
+    },
+    {
+      "page": "orders",
+      "mutation": "move_container",
+      "target": "orders.back_to_orders",
+      "seed": 1
+    },
+    {
+      "page": "orders",
+      "mutation": "move_container",
+      "target": "orders.sign_out",
+      "seed": 0
+    },
+    {
+      "page": "orders",
+      "mutation": "reorder_siblings",
+      "target": "orders.nav_dashboard",
+      "seed": 0
+    },
+    {
+      "page": "orders",
+      "mutation": "reorder_siblings",
+      "target": "orders.nav_orders",
+      "seed": 4
+    },
+    {
+      "page": "orders",
+      "mutation": "reorder_siblings",
+      "target": "orders.nav_reports",
+      "seed": 5
+    },
+    {
+      "page": "orders",
+      "mutation": "reorder_siblings",
+      "target": "orders.view_order",
+      "seed": 1
+    },
+    {
+      "page": "orders",
+      "mutation": "synonym_rename",
+      "target": "orders.back_to_orders",
+      "seed": 1
+    },
+    {
+      "page": "orders",
+      "mutation": "synonym_rename",
+      "target": "orders.nav_dashboard",
+      "seed": 8
+    },
+    {
+      "page": "orders",
+      "mutation": "synonym_rename",
+      "target": "orders.nav_orders",
+      "seed": 5
+    },
+    {
+      "page": "orders",
+      "mutation": "synonym_rename",
+      "target": "orders.nav_reports",
+      "seed": 0
+    },
+    {
+      "page": "orders",
+      "mutation": "synonym_rename",
+      "target": "orders.sign_out",
+      "seed": 4
+    },
+    {
+      "page": "orders",
+      "mutation": "synonym_rename",
+      "target": "orders.view_order",
+      "seed": 11
+    },
+    {
+      "page": "reports",
+      "mutation": "button_link_swap",
+      "target": "reports.download_csv",
+      "seed": 12
+    },
+    {
+      "page": "reports",
+      "mutation": "button_link_swap",
+      "target": "reports.nav_dashboard",
+      "seed": 5
+    },
+    {
+      "page": "reports",
+      "mutation": "button_link_swap",
+      "target": "reports.nav_orders",
+      "seed": 9
+    },
+    {
+      "page": "reports",
+      "mutation": "button_link_swap",
+      "target": "reports.nav_reports",
+      "seed": 0
+    },
+    {
+      "page": "reports",
+      "mutation": "button_link_swap",
+      "target": "reports.sign_out",
+      "seed": 1
+    },
+    {
+      "page": "reports",
+      "mutation": "change_ids_classes",
+      "target": "reports.apply_filter",
+      "seed": 10
+    },
+    {
+      "page": "reports",
+      "mutation": "change_ids_classes",
+      "target": "reports.date_from",
+      "seed": 34
+    },
+    {
+      "page": "reports",
+      "mutation": "change_ids_classes",
+      "target": "reports.date_to",
+      "seed": 1
+    },
+    {
+      "page": "reports",
+      "mutation": "change_ids_classes",
+      "target": "reports.download_csv",
+      "seed": 12
+    },
+    {
+      "page": "reports",
+      "mutation": "change_ids_classes",
+      "target": "reports.nav_dashboard",
+      "seed": 5
+    },
+    {
+      "page": "reports",
+      "mutation": "change_ids_classes",
+      "target": "reports.nav_orders",
+      "seed": 0
+    },
+    {
+      "page": "reports",
+      "mutation": "change_ids_classes",
+      "target": "reports.nav_reports",
+      "seed": 7
+    },
+    {
+      "page": "reports",
+      "mutation": "change_ids_classes",
+      "target": "reports.sign_out",
+      "seed": 9
+    },
+    {
+      "page": "reports",
+      "mutation": "extra_wrappers",
+      "target": "reports.apply_filter",
+      "seed": 10
+    },
+    {
+      "page": "reports",
+      "mutation": "extra_wrappers",
+      "target": "reports.date_from",
+      "seed": 34
+    },
+    {
+      "page": "reports",
+      "mutation": "extra_wrappers",
+      "target": "reports.date_to",
+      "seed": 1
+    },
+    {
+      "page": "reports",
+      "mutation": "extra_wrappers",
+      "target": "reports.download_csv",
+      "seed": 12
+    },
+    {
+      "page": "reports",
+      "mutation": "extra_wrappers",
+      "target": "reports.nav_dashboard",
+      "seed": 5
+    },
+    {
+      "page": "reports",
+      "mutation": "extra_wrappers",
+      "target": "reports.nav_orders",
+      "seed": 0
+    },
+    {
+      "page": "reports",
+      "mutation": "extra_wrappers",
+      "target": "reports.nav_reports",
+      "seed": 7
+    },
+    {
+      "page": "reports",
+      "mutation": "extra_wrappers",
+      "target": "reports.sign_out",
+      "seed": 9
+    },
+    {
+      "page": "reports",
+      "mutation": "icon_only_aria",
+      "target": "reports.apply_filter",
+      "seed": 2
+    },
+    {
+      "page": "reports",
+      "mutation": "icon_only_aria",
+      "target": "reports.download_csv",
+      "seed": 1
+    },
+    {
+      "page": "reports",
+      "mutation": "icon_only_aria",
+      "target": "reports.sign_out",
+      "seed": 0
+    },
+    {
+      "page": "reports",
+      "mutation": "move_container",
+      "target": "reports.download_csv",
+      "seed": 1
+    },
+    {
+      "page": "reports",
+      "mutation": "move_container",
+      "target": "reports.sign_out",
+      "seed": 0
+    },
+    {
+      "page": "reports",
+      "mutation": "reorder_siblings",
+      "target": "reports.apply_filter",
+      "seed": 3
+    },
+    {
+      "page": "reports",
+      "mutation": "reorder_siblings",
+      "target": "reports.date_from",
+      "seed": 17
+    },
+    {
+      "page": "reports",
+      "mutation": "reorder_siblings",
+      "target": "reports.date_to",
+      "seed": 1
+    },
+    {
+      "page": "reports",
+      "mutation": "reorder_siblings",
+      "target": "reports.download_csv",
+      "seed": 12
+    },
+    {
+      "page": "reports",
+      "mutation": "reorder_siblings",
+      "target": "reports.nav_dashboard",
+      "seed": 5
+    },
+    {
+      "page": "reports",
+      "mutation": "reorder_siblings",
+      "target": "reports.nav_orders",
+      "seed": 0
+    },
+    {
+      "page": "reports",
+      "mutation": "reorder_siblings",
+      "target": "reports.nav_reports",
+      "seed": 7
+    },
+    {
+      "page": "reports",
+      "mutation": "synonym_rename",
+      "target": "reports.apply_filter",
+      "seed": 10
+    },
+    {
+      "page": "reports",
+      "mutation": "synonym_rename",
+      "target": "reports.date_from",
+      "seed": 34
+    },
+    {
+      "page": "reports",
+      "mutation": "synonym_rename",
+      "target": "reports.date_to",
+      "seed": 1
+    },
+    {
+      "page": "reports",
+      "mutation": "synonym_rename",
+      "target": "reports.download_csv",
+      "seed": 12
+    },
+    {
+      "page": "reports",
+      "mutation": "synonym_rename",
+      "target": "reports.nav_dashboard",
+      "seed": 5
+    },
+    {
+      "page": "reports",
+      "mutation": "synonym_rename",
+      "target": "reports.nav_orders",
+      "seed": 0
+    },
+    {
+      "page": "reports",
+      "mutation": "synonym_rename",
+      "target": "reports.nav_reports",
+      "seed": 7
+    },
+    {
+      "page": "reports",
+      "mutation": "synonym_rename",
+      "target": "reports.sign_out",
+      "seed": 9
+    }
+  ]
+}

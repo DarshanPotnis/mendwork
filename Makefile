@@ -1,11 +1,15 @@
 UV ?= uv
+NPM ?= npm
 
 .DEFAULT_GOAL := check
 
-.PHONY: install fmt lint typecheck imports jscheck test check portal bench live-providers
+.PHONY: install fmt lint typecheck imports jscheck test check portal chaos-pairs bench live-providers
 
+# Run `nvm use` first: .npmrc sets engine-strict, so npm ci fails loudly on the wrong Node.
 install:
 	$(UV) sync
+	$(NPM) ci
+	$(UV) run playwright install chromium
 	$(UV) run pre-commit install
 
 fmt:
@@ -23,7 +27,7 @@ imports:
 	$(UV) run lint-imports
 
 jscheck:
-	@echo "make jscheck: available from Phase 1"
+	$(NPM) exec --no -- tsc --project tsconfig.json
 
 test:
 	$(UV) run pytest --cov --cov-report=term-missing
@@ -33,7 +37,11 @@ test:
 check: lint typecheck imports jscheck test
 
 portal:
-	@echo "make portal: available from Phase 1"
+	$(UV) run python -m mendwork.apps.portal --root chaos-portal
+
+# Rewrites benchmarks/chaos/heal_pairs.json from the portal's own declarations and selection.
+chaos-pairs:
+	$(UV) run python -m benchmarks.chaos.heal_pairs
 
 bench:
 	@echo "make bench: available from Phase 9"

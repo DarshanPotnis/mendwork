@@ -117,6 +117,7 @@ Both are plain JavaScript with **no build step**, type-checked by TypeScript.
 | `make test` | pytest with coverage gates |
 | `make check` | lint + typecheck + imports + jscheck + test (must pass before any phase is done) |
 | `make portal` | Serve the chaos portal locally |
+| `make chaos-pairs` | Regenerate `benchmarks/chaos/heal_pairs.json`, the seed for every heal mutation–target pair |
 | `make bench` | Run the benchmark and build the scorecard (Phase 9+) |
 | `make live-providers` | Opt-in live model provider tests (local only) |
 

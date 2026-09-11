@@ -30,3 +30,13 @@ repos:
         types: [python]
         pass_filenames: false
         require_serial: true
+
+      # Checks the whole project, not just the staged files: a change to one module can
+      # break the types of another.
+      - id: tsc
+        name: tsc (checkJs)
+        entry: npm exec --no -- tsc --project tsconfig.json
+        language: system
+        files: (\.js|\.d\.ts|^tsconfig\.json|^package(-lock)?\.json)$
+        pass_filenames: false
+        require_serial: true

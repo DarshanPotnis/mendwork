@@ -190,6 +190,30 @@ def test_the_valid_names_come_from_the_model(monkeypatch: pytest.MonkeyPatch) ->
     assert describe_unknown_variables(Settings.model_fields, os.environ) is None
 
 
+def test_the_portal_listens_on_loopback_by_default() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.portal_host == "127.0.0.1"
+    assert settings.portal_port == 8765
+
+
+def test_the_portal_address_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MENDWORK_PORTAL_HOST", "0.0.0.0")  # noqa: S104 - value under test, not a bind
+    monkeypatch.setenv("MENDWORK_PORTAL_PORT", "0")
+
+    settings = Settings(_env_file=None)
+
+    assert (settings.portal_host, settings.portal_port) == ("0.0.0.0", 0)  # noqa: S104
+
+
+@pytest.mark.parametrize("port", ["-1", "65536", "http"])
+def test_an_impossible_portal_port_is_rejected(monkeypatch: pytest.MonkeyPatch, port: str) -> None:
+    monkeypatch.setenv("MENDWORK_PORTAL_PORT", port)
+
+    with pytest.raises(ValidationError, match="portal_port"):
+        Settings(_env_file=None)
+
+
 def test_settings_are_frozen() -> None:
     settings = Settings(_env_file=None)
 

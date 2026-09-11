@@ -23,6 +23,7 @@ dev = [
     "hypothesis>=6.115",
     "import-linter>=2.1",
     "mypy>=1.13",
+    "playwright>=1.62",
     "pre-commit>=4.0",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
@@ -36,7 +37,7 @@ packages = ["src/mendwork"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tests"]
+src = ["src", "tests", "benchmarks"]
 # ruff formats Python code blocks inside Markdown. The design documents use
 # illustrative snippets that are not meant to compile or to be reflowed.
 extend-exclude = ["*.md"]
@@ -74,12 +75,12 @@ select = [
 "tests/**/*.py" = ["S101", "S105", "S106"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["mendwork"]
+known-first-party = ["mendwork", "benchmarks", "tests"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "benchmarks"]
 plugins = ["pydantic.mypy"]
 warn_unreachable = true
 enable_error_code = [
@@ -92,6 +93,9 @@ enable_error_code = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--strict-markers", "--strict-config"]
+markers = [
+    "browser: drives headless Chromium against the locally served chaos portal",
+]
 filterwarnings = ["error"]
 xfail_strict = true
 asyncio_mode = "strict"
@@ -103,4 +107,4 @@ branch = true
 
 [tool.coverage.report]
 show_missing = true
-exclude_also = ["if TYPE_CHECKING:"]
+exclude_also = ["if TYPE_CHECKING:", "if __name__ == .__main__.:"]

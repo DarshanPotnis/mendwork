@@ -11,7 +11,7 @@ from difflib import get_close_matches
 from enum import StrEnum
 from typing import Any, Final
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
@@ -109,6 +109,10 @@ class Settings(BaseSettings):
     environment: Environment = Environment.DEVELOPMENT
     log_level: LogLevel = LogLevel.INFO
     sensitive_key_fragments: frozenset[str] = DEFAULT_SENSITIVE_KEY_FRAGMENTS
+    # Loopback by default: the chaos portal is a local test target, never a public site.
+    portal_host: str = "127.0.0.1"
+    # 0 asks the operating system for any free port.
+    portal_port: int = Field(default=8765, ge=0, le=65535)
 
     @classmethod
     def settings_customise_sources(

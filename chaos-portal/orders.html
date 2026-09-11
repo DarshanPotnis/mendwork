@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Orders · Harborline Supply</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="css/portal.css">
+    <script type="module" src="js/pages/orders.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <a class="brand" href="dashboard.html"><span class="brand__mark" aria-hidden="true"></span>Harborline Supply</a>
+        <nav class="primary-nav" aria-label="Primary">
+          <ul id="primary-nav-list" class="primary-nav__list">
+            <li class="primary-nav__item"><a id="nav-dashboard" class="primary-nav__link" href="dashboard.html" data-testid="nav-dashboard">Dashboard</a></li>
+            <li class="primary-nav__item"><a id="nav-reports" class="primary-nav__link" href="reports.html" data-testid="nav-reports">Reports</a></li>
+            <li class="primary-nav__item"><a id="nav-orders" class="primary-nav__link" href="orders.html" aria-current="page" data-testid="nav-orders">Orders</a></li>
+          </ul>
+        </nav>
+        <div class="account">
+          <span id="account-email" class="account__email"></span>
+          <button id="sign-out" class="btn btn--ghost" type="button">Sign out</button>
+        </div>
+        <button id="chaos-button" class="chaos-button" type="button">Chaos</button>
+      </div>
+    </header>
+
+    <main id="main" class="page">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Purchase orders</h1>
+          <p class="page-subtitle">Orders placed with suppliers, most recent last.</p>
+        </div>
+      </div>
+
+      <section id="orders-list" class="card" aria-labelledby="orders-heading">
+        <h2 id="orders-heading" class="card__title">Recent orders</h2>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col">Order</th>
+              <th scope="col">Supplier</th>
+              <th scope="col">Placed</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="num">Total</th>
+              <th scope="col"><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody id="orders-rows"></tbody>
+        </table>
+      </section>
+
+      <section id="order-detail" class="card order-detail" aria-labelledby="order-detail-heading" hidden>
+        <div id="order-detail-header" class="order-detail__header">
+          <button id="back-to-orders" class="btn btn--ghost" type="button">Back to orders</button>
+          <h2 id="order-detail-heading" class="card__title">Order <span id="detail-order-id"></span></h2>
+        </div>
+        <dl class="detail-list">
+          <div class="detail-list__item"><dt>Supplier</dt><dd id="detail-supplier"></dd></div>
+          <div class="detail-list__item"><dt>Placed</dt><dd id="detail-placed"></dd></div>
+          <div class="detail-list__item"><dt>Status</dt><dd id="detail-status"></dd></div>
+          <div class="detail-list__item"><dt>Ship to</dt><dd id="detail-ship-to"></dd></div>
+          <div class="detail-list__item"><dt>Total</dt><dd id="detail-total"></dd></div>
+        </dl>
+        <table class="data-table">
+          <caption class="visually-hidden">Line items</caption>
+          <thead>
+            <tr>
+              <th scope="col">SKU</th>
+              <th scope="col">Item</th>
+              <th scope="col" class="num">Quantity</th>
+              <th scope="col" class="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody id="detail-lines"></tbody>
+        </table>
+        <div id="order-detail-footer" class="order-detail__footer"></div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <p class="site-footer__legal">Harborline Supply is a fictional company.</p>
+        <div id="footer-actions" class="site-footer__actions"></div>
+      </div>
+    </footer>
+
+    <div id="notices" class="notices" aria-live="polite"></div>
+  </body>
+</html>

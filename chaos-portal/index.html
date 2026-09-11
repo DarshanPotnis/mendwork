@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign in · Harborline Supply</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="css/portal.css">
+    <script type="module" src="js/pages/login.js"></script>
+  </head>
+  <body class="auth-page">
+    <header class="site-header">
+      <div class="site-header__inner">
+        <span class="brand"><span class="brand__mark" aria-hidden="true"></span>Harborline Supply</span>
+        <button id="chaos-button" class="chaos-button" type="button">Chaos</button>
+      </div>
+    </header>
+
+    <main id="main" class="auth">
+      <section class="card auth__card" aria-labelledby="login-heading">
+        <h1 id="login-heading" class="auth__title">Sign in to the supplier portal</h1>
+        <p class="auth__intro">Track shipments, export reports, and review purchase orders.</p>
+        <form id="login-form" class="login-form" novalidate>
+          <div id="login-fields" class="login-form__fields">
+            <div class="field">
+              <label class="field__label" for="email">Email address</label>
+              <input id="email" class="field__input" name="email" type="email" autocomplete="username" data-testid="login-email">
+            </div>
+            <div class="field">
+              <label class="field__label" for="password">Password</label>
+              <input id="password" class="field__input" name="password" type="password" autocomplete="current-password" data-testid="login-password">
+            </div>
+          </div>
+          <p id="login-error" class="form-error" role="alert" hidden></p>
+          <div class="login-form__actions">
+            <button id="sign-in" class="btn btn--primary btn--block" type="submit" data-testid="login-submit">Sign in</button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <p class="site-footer__legal">Harborline Supply is a fictional company.</p>
+        <div id="footer-actions" class="site-footer__actions"></div>
+      </div>
+    </footer>
+
+    <div id="notices" class="notices" aria-live="polite"></div>
+  </body>
+</html>

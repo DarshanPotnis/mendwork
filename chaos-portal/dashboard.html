@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dashboard · Harborline Supply</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="css/portal.css">
+    <script type="module" src="js/pages/dashboard.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <a class="brand" href="dashboard.html"><span class="brand__mark" aria-hidden="true"></span>Harborline Supply</a>
+        <nav class="primary-nav" aria-label="Primary">
+          <ul id="primary-nav-list" class="primary-nav__list">
+            <li class="primary-nav__item"><a id="nav-dashboard" class="primary-nav__link" href="dashboard.html" aria-current="page" data-testid="nav-dashboard">Dashboard</a></li>
+            <li class="primary-nav__item"><a id="nav-reports" class="primary-nav__link" href="reports.html" data-testid="nav-reports">Reports</a></li>
+            <li class="primary-nav__item"><a id="nav-orders" class="primary-nav__link" href="orders.html" data-testid="nav-orders">Orders</a></li>
+          </ul>
+        </nav>
+        <div class="account">
+          <span id="account-email" class="account__email"></span>
+          <button id="sign-out" class="btn btn--ghost" type="button">Sign out</button>
+        </div>
+        <button id="chaos-button" class="chaos-button" type="button">Chaos</button>
+      </div>
+    </header>
+
+    <main id="main" class="page">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Welcome back</h1>
+          <p class="page-subtitle">Here is what needs your attention this half-year.</p>
+        </div>
+      </div>
+
+      <div id="dashboard-cards" class="card-grid">
+        <section class="card summary-card" aria-labelledby="reports-card-title">
+          <h2 id="reports-card-title" class="card__title">Shipment reports</h2>
+          <p class="summary-card__figure"><span id="shipment-count"></span> shipments recorded</p>
+          <p class="summary-card__text">Filter shipments by date and export them as CSV.</p>
+          <a id="open-reports" class="btn btn--primary" href="reports.html" data-testid="dashboard-open-reports">View reports</a>
+        </section>
+        <section class="card summary-card" aria-labelledby="orders-card-title">
+          <h2 id="orders-card-title" class="card__title">Purchase orders</h2>
+          <p class="summary-card__figure"><span id="open-order-count"></span> orders not yet delivered</p>
+          <p class="summary-card__text">Review order status, totals, and line items.</p>
+          <a id="open-orders" class="btn btn--primary" href="orders.html" data-testid="dashboard-open-orders">View orders</a>
+        </section>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <p class="site-footer__legal">Harborline Supply is a fictional company.</p>
+        <div id="footer-actions" class="site-footer__actions"></div>
+      </div>
+    </footer>
+
+    <div id="notices" class="notices" aria-live="polite"></div>
+  </body>
+</html>

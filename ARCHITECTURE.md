@@ -88,6 +88,8 @@ mendwork/
 ├── .importlinter                 # architecture boundary contracts
 ├── package.json                  # dev-only JS tooling (TypeScript), no runtime deps
 ├── package-lock.json
+├── .nvmrc                        # Node.js major version (24), read by nvm and CI
+├── .npmrc                        # engine-strict, save-exact
 ├── tsconfig.json                 # checkJs + strict, noEmit — type-checks plain JS
 ├── .vscode/                      # recommended extensions + editor settings
 ├── .pre-commit-config.yaml
@@ -121,14 +123,18 @@ mendwork/
 │   ├── apps/
 │   │   ├── cli/                  # Typer: record, run, approve, history, diff, rollback, bench
 │   │   ├── api/                  # Phase 10: FastAPI
+│   │   ├── portal/               # chaos portal server, shared by `make portal` and browser tests
 │   │   └── worker/               # Phase 10
 │   ├── settings.py               # pydantic-settings, env prefix MENDWORK_
 │   ├── observability.py          # structlog setup: JSON in prod, stderr only, redaction
 │   └── py.typed                  # PEP 561 marker: this package ships type information
 ├── chaos-portal/                 # static demo site + seeded mutation engine (plain JS, @ts-check)
+│   ├── js/app/                   # portal behaviour and target declarations (page-targets.js)
+│   ├── js/chaos/                 # engine: seeded streams, config, selection, window.__chaos
+│   ├── js/mutations/             # one module per mutation
 │   └── types/                    # type-only .d.ts files (e.g. window.__chaos)
 ├── benchmarks/
-│   ├── chaos/                    # seed suites
+│   ├── chaos/                    # seed suites: heal_pairs.json + its generator (`make chaos-pairs`)
 │   ├── real_apps/                # release A → release B harness
 │   └── fixtures/dom/             # before/after DOM snapshots for fast tests
 ├── dashboard/                    # Phase 11: React + Vite + TypeScript
@@ -392,8 +398,13 @@ class ModelPort(Protocol):
 
 ### Chaos portal
 
-- A static fictional supplier portal with a seeded mutation engine (`?seed=&level=&only=`). The same seed always produces the same page.
-- Ground truth is exposed as `window.__chaos`.
+- A static fictional supplier portal with a seeded mutation engine (`?seed=&level=&only=`). The same URL, seed, and level always produce a byte-identical DOM: nothing reads the clock, timezone, locale, or unseeded randomness. Each page derives its random streams from `(seed, pageId)`.
+- **Configuration persists:** parameters on any page replace the stored configuration; pages without parameters reuse it, so plain links keep chaos on.
+- **Levels:** level L applies L mutations per page. Levels 1–3 are heal-only. At levels 4 and 5, exactly one page per seed — chosen from the seed alone, so every page agrees — replaces one heal mutation with an abstain mutation.
+- **Conflicts:** mutations claim aspects of a target (element, attributes, label, ancestry, position); overlapping claims are refused and abstain mutations claim everything.
+- **Ground truth is exposed only through JavaScript**, as `window.__chaos` (`seed`, `level`, `pageId`, `ready`, `error`, `abstainPageId`, `applied`, `wrongActions`, `locate(targetKey)`). The DOM carries no marker identifying a target. Mendwork's recorder and healer must never read `window.__chaos`.
+- **Wrong actions are harmless and recorded:** decoys and dangerous controls change nothing, append to `wrongActions`, and show a notice. On an abstain-expected step, any activation counts as wrong.
+- Details: `chaos-portal/README.md`, ADR 0004.
 - **Heal-expected mutations:**
   - synonym renames
   - sibling reorder

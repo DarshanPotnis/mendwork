@@ -1,0 +1,11 @@
+{
+  "name": "mendwork-js-tooling",
+  "private": true,
+  "description": "Development-only JavaScript tooling for Mendwork: type-checks the plain JavaScript of the chaos portal and injected page scripts.",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}

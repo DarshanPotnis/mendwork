@@ -30,13 +30,17 @@ Maintenance cost falls over time instead of growing.
 
 ## Getting started
 
-Requires [uv](https://docs.astral.sh/uv/) and GNU Make. Python 3.12 is installed by uv
-from the pinned `.python-version`; no system or conda Python is used.
+Requires [uv](https://docs.astral.sh/uv/), GNU Make, and Node.js 24 (for the TypeScript
+checks of plain JavaScript). Python 3.12 is installed by uv from the pinned
+`.python-version`; no system or conda Python is used. With nvm, `nvm use` picks up
+`.nvmrc`; `npm ci` refuses any other Node major.
 
 ```sh
-make install   # create the environment, install dependencies and pre-commit hooks
-make check     # lint, typecheck, import contracts, and tests
-mendwork --version
+nvm use        # Node.js 24, from .nvmrc
+make install   # Python env, npm tooling, Playwright Chromium, pre-commit hooks
+make check     # lint, typecheck, import contracts, JS type-check, and tests
+make portal    # serve the chaos portal at http://127.0.0.1:8765/
+make chaos-pairs  # regenerate the heal pair seed table after changing the portal
 ```
 
 Configuration is read from the environment with the `MENDWORK_` prefix. Copy
@@ -48,7 +52,8 @@ Configuration is read from the environment with the `MENDWORK_` prefix. Copy
 | `make lint` | Lint without fixing |
 | `make typecheck` | `mypy --strict` |
 | `make imports` | Architecture boundary contracts |
-| `make test` | Tests with coverage gates |
+| `make jscheck` | TypeScript check of the chaos portal's JavaScript |
+| `make test` | Unit and browser tests with coverage gates |
 | `make check` | Everything above — must pass before any phase is done |
 
 ## Documentation
@@ -56,8 +61,10 @@ Configuration is read from the environment with the `MENDWORK_` prefix. Copy
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — the design, and the source of truth for it
 - [`BUILD_PLAN.md`](BUILD_PLAN.md) — the phased build plan
 - [`docs/adr/`](docs/adr/) — decision records
+- [`chaos-portal/README.md`](chaos-portal/README.md) — the demo target, its mutations, and the benchmark rules
 - [`CLAUDE.md`](CLAUDE.md) — working rules for this repository
 
 ## Status
 
-Phase 0 of 12: the project foundation. The engine itself starts at Phase 2.
+Phase 1 of 12: the chaos portal, Mendwork's demo target and benchmark ground truth. The
+engine itself starts at Phase 2.

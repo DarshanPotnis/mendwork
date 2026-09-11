@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Reports · Harborline Supply</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="css/portal.css">
+    <script type="module" src="js/pages/reports.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-header__inner">
+        <a class="brand" href="dashboard.html"><span class="brand__mark" aria-hidden="true"></span>Harborline Supply</a>
+        <nav class="primary-nav" aria-label="Primary">
+          <ul id="primary-nav-list" class="primary-nav__list">
+            <li class="primary-nav__item"><a id="nav-dashboard" class="primary-nav__link" href="dashboard.html" data-testid="nav-dashboard">Dashboard</a></li>
+            <li class="primary-nav__item"><a id="nav-reports" class="primary-nav__link" href="reports.html" aria-current="page" data-testid="nav-reports">Reports</a></li>
+            <li class="primary-nav__item"><a id="nav-orders" class="primary-nav__link" href="orders.html" data-testid="nav-orders">Orders</a></li>
+          </ul>
+        </nav>
+        <div class="account">
+          <span id="account-email" class="account__email"></span>
+          <button id="sign-out" class="btn btn--ghost" type="button">Sign out</button>
+        </div>
+        <button id="chaos-button" class="chaos-button" type="button">Chaos</button>
+      </div>
+    </header>
+
+    <main id="main" class="page">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Shipment reports</h1>
+          <p class="page-subtitle">Choose a date range, then export the matching shipments.</p>
+        </div>
+        <div id="report-header-actions" class="page-header__actions"></div>
+      </div>
+
+      <section class="card" aria-labelledby="filter-heading">
+        <h2 id="filter-heading" class="card__title">Date range</h2>
+        <form id="report-filter" class="filter-form" novalidate>
+          <div id="date-fields" class="filter-form__fields">
+            <div class="field">
+              <label class="field__label" for="date-from">From</label>
+              <input id="date-from" class="field__input" name="from" type="date" data-testid="report-date-from">
+            </div>
+            <div class="field">
+              <label class="field__label" for="date-to">To</label>
+              <input id="date-to" class="field__input" name="to" type="date" data-testid="report-date-to">
+            </div>
+          </div>
+          <div id="report-toolbar" class="toolbar">
+            <button id="apply-filter" class="btn btn--secondary" type="submit">Apply filter</button>
+            <button id="download-csv" class="btn btn--primary" type="button" data-testid="download-csv">Download CSV</button>
+          </div>
+        </form>
+        <p id="report-summary" class="summary" role="status"></p>
+        <p id="report-error" class="form-error" role="alert" hidden></p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <p class="site-footer__legal">Harborline Supply is a fictional company.</p>
+        <div id="footer-actions" class="site-footer__actions"></div>
+      </div>
+    </footer>
+
+    <div id="notices" class="notices" aria-live="polite"></div>
+  </body>
+</html>
