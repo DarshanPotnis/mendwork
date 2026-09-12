@@ -72,6 +72,7 @@ class CheckpointKind(StrEnum):
     DOWNLOAD_COMPLETED = "download_completed"
     RESPONSE_RECEIVED = "response_received"
     NO_ERROR_BANNER = "no_error_banner"
+    FIELD_HAS_VALUE = "field_has_value"
 
 
 class ChangeKind(StrEnum):

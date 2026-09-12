@@ -552,6 +552,7 @@
               "mapping": {
                 "download_completed": "#/$defs/DownloadCompleted",
                 "element_visible": "#/$defs/ElementVisible",
+                "field_has_value": "#/$defs/FieldHasValue",
                 "no_error_banner": "#/$defs/NoErrorBanner",
                 "response_received": "#/$defs/ResponseReceived",
                 "text_present": "#/$defs/TextPresent",
@@ -577,6 +578,9 @@
               },
               {
                 "$ref": "#/$defs/NoErrorBanner"
+              },
+              {
+                "$ref": "#/$defs/FieldHasValue"
               }
             ]
           },
@@ -753,6 +757,36 @@
       "title": "ElementVisible",
       "type": "object"
     },
+    "FieldHasValue": {
+      "additionalProperties": false,
+      "description": "The fill step's target field now holds the value the step typed.\n\nOnly valid on fill steps. For a secret it checks only that the field is not empty: a\nsecret is never read back, compared, or recorded.",
+      "properties": {
+        "kind": {
+          "const": "field_has_value",
+          "title": "Kind",
+          "type": "string"
+        },
+        "timeout_ms": {
+          "anyOf": [
+            {
+              "maximum": 600000,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout Ms"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "FieldHasValue",
+      "type": "object"
+    },
     "FillStep": {
       "additionalProperties": false,
       "description": "Replace the target field's content with a value.",
@@ -813,6 +847,7 @@
               "mapping": {
                 "download_completed": "#/$defs/DownloadCompleted",
                 "element_visible": "#/$defs/ElementVisible",
+                "field_has_value": "#/$defs/FieldHasValue",
                 "no_error_banner": "#/$defs/NoErrorBanner",
                 "response_received": "#/$defs/ResponseReceived",
                 "text_present": "#/$defs/TextPresent",
@@ -838,6 +873,9 @@
               },
               {
                 "$ref": "#/$defs/NoErrorBanner"
+              },
+              {
+                "$ref": "#/$defs/FieldHasValue"
               }
             ]
           },
@@ -1260,6 +1298,7 @@
               "mapping": {
                 "download_completed": "#/$defs/DownloadCompleted",
                 "element_visible": "#/$defs/ElementVisible",
+                "field_has_value": "#/$defs/FieldHasValue",
                 "no_error_banner": "#/$defs/NoErrorBanner",
                 "response_received": "#/$defs/ResponseReceived",
                 "text_present": "#/$defs/TextPresent",
@@ -1285,6 +1324,9 @@
               },
               {
                 "$ref": "#/$defs/NoErrorBanner"
+              },
+              {
+                "$ref": "#/$defs/FieldHasValue"
               }
             ]
           },
@@ -1452,6 +1494,7 @@
               "mapping": {
                 "download_completed": "#/$defs/DownloadCompleted",
                 "element_visible": "#/$defs/ElementVisible",
+                "field_has_value": "#/$defs/FieldHasValue",
                 "no_error_banner": "#/$defs/NoErrorBanner",
                 "response_received": "#/$defs/ResponseReceived",
                 "text_present": "#/$defs/TextPresent",
@@ -1477,6 +1520,9 @@
               },
               {
                 "$ref": "#/$defs/NoErrorBanner"
+              },
+              {
+                "$ref": "#/$defs/FieldHasValue"
               }
             ]
           },
@@ -1672,6 +1718,7 @@
               "mapping": {
                 "download_completed": "#/$defs/DownloadCompleted",
                 "element_visible": "#/$defs/ElementVisible",
+                "field_has_value": "#/$defs/FieldHasValue",
                 "no_error_banner": "#/$defs/NoErrorBanner",
                 "response_received": "#/$defs/ResponseReceived",
                 "text_present": "#/$defs/TextPresent",
@@ -1697,6 +1744,9 @@
               },
               {
                 "$ref": "#/$defs/NoErrorBanner"
+              },
+              {
+                "$ref": "#/$defs/FieldHasValue"
               }
             ]
           },

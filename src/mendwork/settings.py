@@ -3,21 +3,32 @@
 This is the only place a default may live. Apps read ``Settings`` and hand the values
 the engine needs to its constructors, so the engine never reaches for configuration
 itself and stays trivially testable with explicit values.
+
+``MENDWORK_SECRET_`` is a reserved namespace: secret values, read by the secret resolver
+at the moment of use, never by Settings. See ADR 0003.
 """
 
 import os
 from collections.abc import Iterable, Mapping
 from difflib import get_close_matches
 from enum import StrEnum
-from typing import Any, Final
+from pathlib import Path
+from typing import Any, Final, Self
 
 from pydantic import Field, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
+from mendwork.adapters.secrets_env.naming import (
+    VARIABLE_NAMING_HINT,
+    is_secret_namespace,
+    is_valid_secret_variable,
+)
 from mendwork.engine.safety.redaction import DEFAULT_SENSITIVE_KEY_FRAGMENTS
 
 ENV_PREFIX: Final = "MENDWORK_"
+SECRETS_NOT_IN_DOTENV: Final = "secrets are read from the process environment only, never from .env"
+_MAX_TIMEOUT_MS: Final = 600_000
 
 
 class Environment(StrEnum):
@@ -39,36 +50,54 @@ class LogLevel(StrEnum):
 
 
 def describe_unknown_variables(
-    field_names: Iterable[str], variable_names: Iterable[str]
+    field_names: Iterable[str],
+    variable_names: Iterable[str],
+    dotenv_names: Iterable[str] = (),
 ) -> str | None:
     """Describe every ``MENDWORK_`` variable that matches no field, or None if all match.
 
     pydantic-settings ignores a prefixed variable it does not recognise, so a typo
     silently does nothing. Configuration that looks applied but is not is worse than a
     failure to start, hence this check.
+
+    Environment variables in the reserved ``MENDWORK_SECRET_`` namespace are accepted
+    only when named exactly as the secret resolver looks them up. In a .env file that
+    namespace is always refused, because the resolver reads only the process environment.
     """
     valid_suffixes = sorted(name.upper() for name in field_names)
-    valid = [f"{ENV_PREFIX}{suffix}" for suffix in valid_suffixes]
-    unknown = sorted(
-        name
-        for name in {variable.upper() for variable in variable_names}
-        if name.startswith(ENV_PREFIX) and name not in valid
-    )
-    if not unknown:
-        return None
+    valid = {f"{ENV_PREFIX}{suffix}" for suffix in valid_suffixes}
+    problems: dict[str, str] = {}
 
-    lines = []
-    for name in unknown:
-        # Compare without the shared prefix, which would otherwise make every name
-        # look similar to every other one.
-        closest = get_close_matches(name.removeprefix(ENV_PREFIX), valid_suffixes, n=1)
-        hint = (
-            f"did you mean {ENV_PREFIX}{closest[0]}?"
-            if closest
-            else f"valid names are {', '.join(valid)}"
-        )
-        lines.append(f"  {name} ({hint})")
+    for name in set(variable_names):
+        upper = name.upper()
+        if not upper.startswith(ENV_PREFIX):
+            continue
+        if is_secret_namespace(name):
+            if not is_valid_secret_variable(name):
+                problems[name] = VARIABLE_NAMING_HINT
+        elif upper not in valid:
+            problems[upper] = _typo_hint(upper, valid_suffixes)
+
+    for name in set(dotenv_names):
+        upper = name.upper()
+        if is_secret_namespace(name):
+            problems[upper] = SECRETS_NOT_IN_DOTENV
+        elif upper.startswith(ENV_PREFIX) and upper not in valid:
+            problems[upper] = _typo_hint(upper, valid_suffixes)
+
+    if not problems:
+        return None
+    lines = [f"  {name} ({hint})" for name, hint in sorted(problems.items())]
     return "unrecognised environment variables:\n" + "\n".join(lines)
+
+
+def _typo_hint(name: str, valid_suffixes: list[str]) -> str:
+    # Compare without the shared prefix, which would otherwise make every name look similar
+    # to every other one.
+    closest = get_close_matches(name.removeprefix(ENV_PREFIX), valid_suffixes, n=1)
+    if closest:
+        return f"did you mean {ENV_PREFIX}{closest[0]}?"
+    return "valid names are " + ", ".join(f"{ENV_PREFIX}{suffix}" for suffix in valid_suffixes)
 
 
 class _OwnDotEnvSource(PydanticBaseSettingsSource):
@@ -104,6 +133,8 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="forbid",
         frozen=True,
+        # A rejected value is not repeated back: it may sit next to a credential in .env.
+        hide_input_in_errors=True,
     )
 
     environment: Environment = Environment.DEVELOPMENT
@@ -115,6 +146,40 @@ class Settings(BaseSettings):
     portal_port: int = Field(default=8765, ge=0, le=65535)
     # Largest workflow file accepted, checked before parsing: a denial-of-service guard.
     workflow_max_bytes: int = Field(default=1024 * 1024, ge=4096, le=16 * 1024 * 1024)
+
+    # Replay timing. Waits are explicit conditions bounded by these, never sleeps.
+    # Settle, Rung 0 resolution, pre-action waits, and the action: real apps render in
+    # 1-5 s, and a removed control should not stall a run for longer than this.
+    step_timeout_ms: int = Field(default=10_000, ge=1, le=_MAX_TIMEOUT_MS)
+    # A waiting checkpoint with no timeout_ms of its own.
+    checkpoint_timeout_ms: int = Field(default=10_000, ge=1, le=_MAX_TIMEOUT_MS)
+    # One attempt of a navigate step: cold loads of real apps; Playwright's own default.
+    navigation_timeout_ms: int = Field(default=30_000, ge=1, le=_MAX_TIMEOUT_MS)
+    # A hung run releases its worker within ten minutes.
+    run_timeout_ms: int = Field(default=600_000, ge=1_000, le=24 * 60 * 60 * 1000)
+    # How long to wait for a quiet DOM before evaluating selectors on a busy one.
+    settle_timeout_ms: int = Field(default=2_000, ge=1, le=60_000)
+    # Consecutive animation frames without a DOM mutation; Playwright's stability rule.
+    settle_quiet_frames: int = Field(default=2, ge=1, le=60)
+
+    # Transient navigation retries: 3 attempts, pausing ~0.5 s then ~1 s, jitter keeping at
+    # least half of each pause so concurrent workers do not retry in lockstep.
+    navigation_max_attempts: int = Field(default=3, ge=1, le=10)
+    retry_initial_delay_ms: int = Field(default=500, ge=0, le=60_000)
+    retry_max_delay_ms: int = Field(default=4_000, ge=0, le=300_000)
+    retry_backoff_multiplier: float = Field(default=2.0, ge=1.0, le=10.0)
+    retry_jitter_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
+
+    # Where run artifacts are written: <artifacts_dir>/runs/<run_id>/.
+    artifacts_dir: Path = Path("artifacts")
+    browser_headless: bool = True
+    # Delay after every browser operation, for demo recordings; 0 in normal runs.
+    browser_slow_mo_ms: int = Field(default=0, ge=0, le=10_000)
+    # Recorded fingerprints' positions, and the portal's layout guarantees, assume 1280x720.
+    viewport_width: int = Field(default=1280, ge=320, le=7680)
+    viewport_height: int = Field(default=720, ge=240, le=4320)
+    # Record a Playwright trace and keep it when a step fails, unless it could hold a secret.
+    trace_on_failure: bool = True
 
     @classmethod
     def settings_customise_sources(
@@ -139,10 +204,16 @@ class Settings(BaseSettings):
         # A prefixed .env key that matched no field arrives here under its raw name,
         # whereas the environment source drops its unmatched names before this point.
         # Both are collected so that one error reports every typo.
-        names = list(os.environ)
+        dotenv_names: list[str] = []
         if isinstance(data, Mapping):
-            names.extend(str(name) for name in data if str(name).upper().startswith(ENV_PREFIX))
-        problem = describe_unknown_variables(cls.model_fields, names)
+            dotenv_names = [str(name) for name in data if str(name).upper().startswith(ENV_PREFIX)]
+        problem = describe_unknown_variables(cls.model_fields, os.environ, dotenv_names)
         if problem is not None:
             raise ValueError(problem)
         return data
+
+    @model_validator(mode="after")
+    def _retry_delays_are_ordered(self) -> Self:
+        if self.retry_max_delay_ms < self.retry_initial_delay_ms:
+            raise ValueError("retry_max_delay_ms must not be less than retry_initial_delay_ms")
+        return self

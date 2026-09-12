@@ -86,12 +86,53 @@ class AmbiguousTarget(MendworkError):
     """More than one element matched a step's target, so acting would be a guess."""
 
 
+class TargetDrifted(MendworkError):
+    """The selectors agree on one element, but it is not the element that was recorded.
+
+    Its role, tag, type, or accessible name differs from the fingerprint, or Playwright
+    could not confirm the identity that was computed. Acting on it could do something
+    other than what the step intends ("Download CSV" relabelled "Delete data").
+    """
+
+
+class TargetNotActionable(MendworkError):
+    """The target was found and verified, but cannot receive the step's action."""
+
+
+class PageNeverStable(MendworkError):
+    """The page kept changing, so the target could not be verified safely.
+
+    The element may well be present: the problem is the page, whose DOM changed during
+    every attempt to read a consistent picture of it.
+    """
+
+
 class CheckpointFailed(MendworkError):
     """A step's checkpoint did not pass, so the step is not considered successful."""
 
 
 class NavigationError(MendworkError):
-    """The browser could not reach or load a page."""
+    """The browser could not reach or load a page, or an action opened another page."""
+
+
+class RunTimedOut(MendworkError):
+    """The run exceeded its overall time limit."""
+
+
+class SecretUnavailable(MendworkError):
+    """A secret the workflow declares could not be resolved; it is missing or empty."""
+
+
+class InfrastructureError(MendworkError):
+    """Something Mendwork depends on failed, rather than the workflow or the site."""
+
+
+class BrowserUnavailable(InfrastructureError):
+    """The browser could not be launched, or closed while a run was using it."""
+
+
+class ArtifactStoreUnavailable(InfrastructureError):
+    """Run artifacts could not be written."""
 
 
 class ProviderError(MendworkError):
@@ -106,12 +147,8 @@ class BudgetExceeded(MendworkError):
     """A run or a workspace exhausted its model-call budget."""
 
 
-class WorkflowValidationError(MendworkError):
-    """A workflow definition is structurally invalid or internally inconsistent.
-
-    Every problem found is reported at once, as ``issues``, so fixing a file is one edit
-    session rather than a loop of one error per attempt.
-    """
+class _IssuesError(MendworkError):
+    """An error that reports every problem found at once, as ``issues``."""
 
     def __init__(
         self, message: str, *, issues: Iterable[ValidationIssue] = (), **context: object
@@ -126,6 +163,22 @@ class WorkflowValidationError(MendworkError):
     def issues(self) -> tuple[ValidationIssue, ...]:
         """The individual problems, in document order where the document gave one."""
         return self._issues
+
+
+class WorkflowValidationError(_IssuesError):
+    """A workflow definition is structurally invalid or internally inconsistent.
+
+    Every problem found is reported at once, so fixing a file is one edit session rather
+    than a loop of one error per attempt.
+    """
+
+
+class RunInputError(_IssuesError):
+    """The inputs supplied for a run do not match the workflow's declarations.
+
+    Unknown names, missing required inputs, and invalid values are all reported together,
+    each located at ``inputs.<name>``. Messages never echo the supplied values.
+    """
 
 
 class UnsupportedSchemaVersion(WorkflowValidationError):

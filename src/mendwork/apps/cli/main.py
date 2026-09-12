@@ -1,14 +1,17 @@
 """The ``mendwork`` command-line entry point.
 
-A composition root: it reads configuration, installs logging, and will wire adapters
-into the engine as commands arrive in later phases. It holds no business logic.
+A composition root: it reads configuration, installs logging, and wires adapters into the
+engine through its commands. It holds no business logic.
 """
 
 from importlib.metadata import version as package_version
 from typing import Annotated
 
 import typer
+from pydantic import ValidationError
 
+from mendwork.apps.cli.exit_codes import ExitCode
+from mendwork.apps.cli.run import run
 from mendwork.apps.cli.schema import schema
 from mendwork.apps.cli.validate import validate
 from mendwork.observability import configure_logging
@@ -21,6 +24,7 @@ app = typer.Typer(
 )
 app.command()(validate)
 app.command()(schema)
+app.command()(run)
 
 
 def _print_version(requested: bool) -> None:
@@ -42,4 +46,9 @@ def main(
     ] = False,
 ) -> None:
     """Run a Mendwork command."""
-    configure_logging(Settings())
+    try:
+        settings = Settings()
+    except ValidationError as error:
+        typer.echo(f"invalid configuration: {error}", err=True)
+        raise typer.Exit(code=ExitCode.INVALID) from None
+    configure_logging(settings)

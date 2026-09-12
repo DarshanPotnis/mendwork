@@ -60,5 +60,9 @@ def _renderers(environment: Environment) -> list[Processor]:
         ]
     return [
         structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-        structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty()),
+        # The default formatter renders tracebacks with every frame's local variables, and
+        # a resolved secret is exactly such a variable. Plain tracebacks carry no locals.
+        structlog.dev.ConsoleRenderer(
+            colors=sys.stderr.isatty(), exception_formatter=structlog.dev.plain_traceback
+        ),
     ]

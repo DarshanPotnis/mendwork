@@ -83,7 +83,8 @@ def test_a_variable_with_no_close_match_lists_the_valid_names(
 
     message = str(caught.value)
     assert "MENDWORK_DATABASE_URL" in message
-    assert "valid names are MENDWORK_ENVIRONMENT, MENDWORK_LOG_LEVEL" in message
+    assert "valid names are MENDWORK_ARTIFACTS_DIR, " in message
+    assert "MENDWORK_LOG_LEVEL" in message
 
 
 def test_a_dotenv_file_is_read(tmp_path: Path) -> None:

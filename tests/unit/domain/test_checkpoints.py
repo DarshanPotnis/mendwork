@@ -137,7 +137,8 @@ def test_url_modes_compare_as_documented(mode: str, pattern: str, url: str, matc
             {"kind": "screenshot_matches"},
             "",
             "kind must be one of: url_matches, element_visible, text_present, "
-            "download_completed, response_received, no_error_banner (got 'screenshot_matches')",
+            "download_completed, response_received, no_error_banner, field_has_value "
+            "(got 'screenshot_matches')",
         ),
     ],
 )

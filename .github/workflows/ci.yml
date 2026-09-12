@@ -44,5 +44,6 @@ jobs:
       - name: Install Chromium
         run: uv run playwright install --with-deps chromium
 
+      # check-all includes the slow tests that make check skips locally.
       - name: Run checks
-        run: make check
+        run: make check-all

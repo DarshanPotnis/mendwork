@@ -113,14 +113,17 @@ mendwork/
 │   │   ├── patching/
 │   │   └── errors.py
 │   ├── adapters/
-│   │   ├── browser_playwright/
-│   │   │   └── js/               # injected page scripts: recorder, candidate extraction, set-of-marks
+│   │   ├── browser_playwright/   # BrowserPort: launcher, session, Rung 0 primitives, tracing
+│   │   │   └── js/               # page scripts: page state, element identity and keys, field value;
+│   │   │                         #   later the recorder, candidate extraction, set-of-marks
 │   │   ├── models/               # fake.py, ollama.py, gemini.py, openai_compatible.py, anthropic.py
 │   │   ├── workflow_yaml/        # strict YAML decoding with line numbers, deterministic encoding
 │   │   ├── storage_fs/           # WorkflowStore on files: one directory per workflow, no-overwrite publish
 │   │   ├── storage_postgres/     # Phase 10
-│   │   ├── artifacts_local/
-│   │   └── secrets_env/
+│   │   ├── artifacts_local/      # ArtifactStore: artifacts/runs/<run_id>/, atomic writes
+│   │   ├── events_jsonl/         # EventSink as JSON lines
+│   │   ├── secrets_env/          # SecretResolver: MENDWORK_SECRET_<NAME>
+│   │   └── system/               # Clock, Timer, RandomSource, RunIdGenerator on the real system
 │   ├── apps/
 │   │   ├── cli/                  # Typer: validate, schema, record, run, approve, history, diff, rollback, bench
 │   │   ├── api/                  # Phase 10: FastAPI
@@ -210,7 +213,8 @@ InputDeclaration = Annotated[TextInput | DateInput | UrlInput, Field(discriminat
 
 # What "this step worked" means
 Checkpoint = Annotated[
-    UrlMatches | ElementVisible | TextPresent | DownloadCompleted | ResponseReceived | NoErrorBanner,
+    UrlMatches | ElementVisible | TextPresent | DownloadCompleted | ResponseReceived
+    | NoErrorBanner | FieldHasValue,
     Field(discriminator="kind"),
 ]
 
@@ -288,9 +292,16 @@ class HealAttempt(BaseModel):          # Phase 5
   - `text_present`: `text`;
   - `download_completed`: `filename_pattern`;
   - `response_received`: `mode`, `pattern`, `status_min`, `status_max`;
-  - `no_error_banner`: optional `selector`.
+  - `no_error_banner`: optional `selector`;
+  - `field_has_value` (fill steps only, added in Phase 3 and additive to schema 1): no fields.
 - **Patterns** use Python `re` syntax, must match the whole string, and are compiled when the workflow loads.
 - **`timeout_ms` is optional**; absent means the runtime default, so the format never hardcodes timing. `no_error_banner` has no timeout: it is checked once, after the step's other checkpoints pass.
+
+### Runs and events
+
+- **`Run`** (saved as `run.json`) records the workflow version, status, bound inputs (secrets by name only), one `StepResult` per step, and the run's error. A `StepResult` carries its Rung 0 evidence (every selector's per-level counts and outcome, the winning rank, the identity), navigation report, whether the action reached the page, checkpoint results, error, and artifact names. Steps after a failure are `not_run`.
+- **Events** are a discriminated union on `type`, each with `event_version`, `run_id`, a gap-free `sequence` from 1, and a Clock timestamp: `run_started`, `step_started`, `target_resolved`, `action_performed` (value kind, never the value), `checkpoint_passed`, `checkpoint_failed`, `step_succeeded`, `step_failed`, `run_finished`.
+- **Errors** carry a category: `step`, or `infrastructure` for `InfrastructureError` and anything unexpected.
 
 ### Versions
 
@@ -303,34 +314,45 @@ class HealAttempt(BaseModel):          # Phase 5
 - `MendworkError`
   - `TargetNotFound`
   - `AmbiguousTarget`
+  - `TargetDrifted`: the selectors agree on one element whose identity differs from the fingerprint
+  - `TargetNotActionable`: verified, but it cannot receive the action
+  - `PageNeverStable`: the page kept changing, so the target could not be verified safely
   - `CheckpointFailed`
   - `NavigationError`
+  - `RunTimedOut`
+  - `SecretUnavailable`
   - `ProviderError`
   - `PolicyViolation`
   - `BudgetExceeded`
   - `VersionConflict`: a version number is taken, or its parent is missing
   - `WorkflowValidationError`, which carries every `ValidationIssue` (path, message, line, column, step id)
     - `UnsupportedSchemaVersion`
+  - `RunInputError`, which carries every issue with the supplied inputs
+  - `InfrastructureError`
+    - `BrowserUnavailable`
+    - `ArtifactStoreUnavailable`
 
-**Ports so far:** `Clock` and `WorkflowStore`. The others (`BrowserPort`, `ArtifactStore`, `EventSink`, `SecretResolver`, `ModelPort`) are introduced by the phase that first calls them. A store instance is bound to one tenant when it is constructed, so its methods take no workspace.
+**Ports so far:** `Clock`, `WorkflowStore`, and from Phase 3 `BrowserLauncher`/`BrowserPort`, `ArtifactStore`, `EventSink`, `SecretResolver`, and the small ports that keep the engine deterministic: `Timer` (monotonic time and backoff pauses), `RandomSource` (jitter), and `RunIdGenerator`. `ModelPort` arrives in Phase 6. A store instance is bound to one tenant when it is constructed, so its methods take no workspace. Port data are plain models; no Playwright type crosses a port.
 
 ---
 
 ## 6. Run lifecycle
 
-1. Load the `WorkflowVersion`. Validate run inputs. Resolve secret references only in memory, at the moment of use.
-2. Check the start URL against the workspace's egress policy.
-3. For each step:
+1. **Preflight**, which creates nothing: load the `WorkflowVersion`, bind run inputs (required, defaults, unknown names), and check that every declared secret can be resolved. Secret values are resolved only in memory, at the moment of use.
+2. Check the start URL against the workspace's egress policy (Phase 7).
+3. Create the run id, write `run.json` as `running`, emit `run_started`, and open one isolated browser session.
+4. For each step:
    1. Emit `step_started`.
-   2. Resolve the target through the heal ladder, starting at Rung 0.
+   2. Resolve the target through the heal ladder, starting at Rung 0 (§7): settle, evaluate every selector, check stability, consensus, identity.
    3. If the target was healed and the step is `IRREVERSIBLE`, pause the run as `AWAITING_APPROVAL` with the evidence attached.
-   4. Run pre-action checks: element is visible, enabled, and compatible with the action.
-   5. Perform the action.
-   6. Evaluate every checkpoint.
-   7. **Pass:** record the `StepResult`, plus a `ChangeRecord` if the step was healed. **Fail:** apply the recovery policy (§8).
-4. Finish: set the final status, total model usage and estimated cost, store artifacts, and apply the patch promotion policy (§9).
+   4. Run pre-action checks on the pinned element: attached, same identity, visible, enabled or editable, compatible with the action.
+   5. Watch for the events the step's `download_completed` and `response_received` checkpoints observe.
+   6. Perform the action on the pinned element, then let the page settle again.
+   7. Evaluate every checkpoint (§8); a new tab or window fails the step.
+   8. **Pass:** record the `StepResult` and a screenshot, plus a `ChangeRecord` if the step was healed. **Fail:** record screenshot, DOM snapshot, and trace (unless it could hold a secret), then apply the recovery policy (§8). Phase 3 stops the run.
+5. Finish: set the final status, total model usage and estimated cost, write `run.json`, emit `run_finished`, and apply the patch promotion policy (§9).
 
-Transient retries (such as navigation timeouts) are **separate from healing**. They retry the same target with bounded exponential backoff.
+Transient retries are **separate from healing**. Only a navigate step's page load is retried, for timeouts, dropped connections, and 502/503/504, with bounded exponential backoff and jitter. Actions and resolution are never retried. Every wait is bounded by the step, checkpoint, navigation, and run timeouts from Settings. Details: ADR 0007.
 
 ---
 
@@ -346,11 +368,20 @@ Each rung is more expensive than the one before it. We only climb when the rung 
 | **3** | The model chooses among the top-K candidates from Rung 2. | Cents or $0 local |
 | **4** | Abstain: pause for a human or fail with a full evidence report. | Free |
 
+### Rung 0 — consensus and stability
+
+- **Every** recorded selector is evaluated. Only visible elements count, at every scope level.
+- Hits on one element: that element, by the best-ranked hit. Hits on different elements: `AmbiguousTarget`. No hit but a selector matched several: `AmbiguousTarget`. Otherwise `TargetNotFound`.
+- The page settles first (load event, then animation frames without a DOM mutation). A snapshot the DOM changed under is discarded and read again; a page that changes during every attempt fails with `PageNeverStable`.
+- Not-found waits for the next DOM change until the step deadline. Ambiguous and drifted verdicts stop at once on a quiet page.
+- The verified element is pinned and every action goes through the pinned node, never through a selector that could match something else later.
+
 ### Rung 0 — identity check (drifted matches)
 
 A selector that resolves to exactly one element is a candidate, not yet a success.
 
-- **Same element:** the element's role and accessible name match the fingerprint, so the step proceeds.
+- **How identity is read:** a page script computes tag, type, role, and accessible name the way Playwright does, without reading field values. Playwright then confirms it: a role and exact-name selector, through the same mapping Rung 0 uses, must find the element. An unconfirmed identity counts as different.
+- **Same element:** the element's role and accessible name match the fingerprint (names compared after NFKC, case folding, and whitespace collapsing). A fingerprint without a role (password and date inputs) is compared on tag, type, and name instead. The step proceeds.
 - **Drifted match:** either one differs. A drifted match must pass the same acceptance rules as a heal before any action:
   - danger keywords;
   - the risk policy (IRREVERSIBLE needs approval);
@@ -394,7 +425,14 @@ Every rung emits a `HealAttempt` event with its full evidence, so every decision
 
 ### Checkpoints
 
-Recording auto-proposes checkpoints: a URL change, a new heading or landmark becoming visible, a download event, or a network response. Users can edit them. Every waiting checkpoint has a timeout (its own `timeout_ms` or the runtime default) and relies on Playwright's auto-waiting. `no_error_banner` does not wait: it is checked once, after the step's other checkpoints pass. **There are no fixed sleeps anywhere.**
+Recording auto-proposes checkpoints: a URL change, a new heading or landmark becoming visible, a download event, or a network response. Users can edit them. Every waiting checkpoint has a timeout (its own `timeout_ms` or the runtime default) and waits for page changes or events, never for time. **There are no fixed sleeps anywhere.**
+
+- **Order:** as written, with `no_error_banner` last and checked once.
+- **Watched before the action:** `download_completed` and `response_received`, whose listeners exist before the action is dispatched.
+- **`no_error_banner`:** no visible `role=alert` element with non-whitespace text; with a selector, that selector matches no visible element.
+- **`field_has_value`:** the fill step's field holds the step's resolved value, compared inside the page; for a secret, only that the field is not empty. The value never leaves the page.
+- **`element_visible`:** exactly one visible element at every scope level.
+- **`text_present`:** the page's rendered text contains the text, whitespace-normalized and case-sensitive.
 
 ### Recovery policy
 
@@ -430,8 +468,11 @@ Risk is classified **by consequence**, not by mechanism:
 ### Secrets
 
 - Workflows store only secret *references*.
-- A `SecretResolver` port supplies values at the moment of use.
-- A structlog redaction processor guarantees secret values never appear in logs, events, or artifacts. This is tested.
+- A `SecretResolver` port supplies values at the moment of use. The environment adapter reads `MENDWORK_SECRET_<UPPER_SNAKE_NAME>`, a namespace Settings reserves (ADR 0003); `.env` never supplies secrets.
+- Each run scrubs resolved values, in raw and escaped forms, from all outside text entering its records: errors, identities, checkpoint details, URLs, and DOM snapshots.
+- **Traces** pause before a secret is typed, resume only on a different document, are withheld when a failure happens on the secret's document, and are scanned for every secret encoding before being kept. **Screenshots** mask password fields and fields filled from secrets.
+- Tested end to end: a distinctive secret is searched for in stdout, stderr, events, `run.json`, DOM snapshots, and every trace member (ADR 0007).
+- A structlog redaction processor wired to the `SecretResolver` extends the same guarantee to every log line (Phase 7).
 
 ### Explicit non-goals
 

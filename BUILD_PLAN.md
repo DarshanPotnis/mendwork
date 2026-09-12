@@ -141,29 +141,60 @@ Acceptance: make check passes; engine/domain coverage ≥ 95%.
 ## Phase 3 — Browser adapter, replayer, verifier (brute force)
 
 ```
-Phase 3 — Replay with exact selectors and verification. No healing yet.
-Read ARCHITECTURE.md §6, §8 (checkpoints only). Present a plan and wait for approval.
+Phase 3 — Replay and verification (Rung 0 only, no healing).
+Read ARCHITECTURE.md §2, §5–§8, §14 and ADRs 0003, 0005, 0006. Present a plan and wait for approval.
 
-- engine/ports: BrowserPort, ArtifactStore, EventSink, and SecretResolver, shaped by this phase's callers.
-- adapters/browser_playwright implementing BrowserPort with async Playwright (reusing locators.py, the one mapping from domain selectors to Playwright locators): one BrowserContext per run, per-run downloads directory, configurable headless/headed, Playwright tracing saved on failure.
-- engine/replay: executes a WorkflowVersion step by step using Rung 0 only (recorded selectors in ranked order). Exactly-one-visible-match rule at every `within` level: 0 → TargetNotFound, >1 → AmbiguousTarget.
-- Rung 0 identity check (ARCHITECTURE.md §7): an exactly-one match whose role or accessible name differs from the fingerprint is a drifted match, never a plain success. It must pass the same acceptance rules as a heal (danger keywords, risk policy, verification) before any action. This phase has no acceptance rules yet, so a drifted match stops the step with the evidence (recorded vs live role and name). Harmless drift ("Download CSV" → "Export data") becomes acceptable in Phase 5; dangerous drift ("Download CSV" → "Delete data") must always abstain.
-- engine/verification: pre-action checks (visible, enabled, action-compatible) and evaluation of every Checkpoint kind, with per-checkpoint timeouts (the runtime default from Settings when a checkpoint has none). `no_error_banner` is checked once, after the step's other checkpoints pass. No sleeps.
-- A `field_has_value` checkpoint for FILL steps (a schema addition with its ADR): for a literal or input value it compares the field's value; for a secret it checks only that the field is non-empty. It never reads a secret back for comparison, logging, or evidence.
-- Transient retry policy for navigation errors: bounded exponential backoff, separate from healing, configured via Settings.
-- Run, StepResult records; events step_started / step_succeeded / step_failed / checkpoint_passed / checkpoint_failed via EventSink; adapter that writes JSON lines to stdout or a file.
-- adapters/artifacts_local: screenshot after each step; trace + DOM snapshot on failure; paths recorded on StepResult.
-- SystemClock and env-backed SecretResolver adapters.
-- CLI: `mendwork run <workflow.yaml> --input key=value --headed --artifacts-dir PATH`, with a readable summary table at the end.
+Goal: `mendwork run` executes a workflow in a real browser, verifies every step, and either
+succeeds or stops safely with a precise error and evidence. It never acts on an element it
+is not sure about.
 
-Tests:
-- integration: chaos portal level 0 → run succeeds end to end, CSV downloaded and checkpoint passes
-- integration: only=change_ids_classes → fails with TargetNotFound at the correct step, artifacts exist
-- integration: only=dangerous_rename on reports.download_csv (the target keeps its id and data-testid) → the run stops with a drifted match and `window.__chaos.wrongActions` stays empty
-- verifier unit tests using page.set_content fixtures for every checkpoint kind (pass and fail)
-- secrets never appear in events or logs (assert on captured output)
+- Ports shaped by their callers: BrowserLauncher/BrowserPort, ArtifactStore, EventSink,
+  SecretResolver, plus Timer, RandomSource, and RunIdGenerator so engine tests are
+  deterministic. No Playwright types cross into the engine.
+- Rung 0 (engine decides, adapter provides primitives): every selector evaluated through the
+  single build_locator mapping with resolve_unique; a hit is exactly one visible element at
+  every scope level. Hits on different elements → AmbiguousTarget; no hit but several
+  matches → AmbiguousTarget; otherwise TargetNotFound.
+- Identity check: role and accessible name (NFKC, case-folded, whitespace-collapsed), or
+  tag and type for role-less fingerprints; computed in the page without reading field
+  values and confirmed by Playwright's role locator. Any difference → TargetDrifted with
+  recorded vs found identity. Phase 5 decides which drifts are acceptable.
+- Settling without sleeps or window.__chaos: load, quiet animation frames, a DOM mutation
+  count bracketing every evaluation (PageNeverStable when no snapshot is consistent), and
+  actions on pinned elements only.
+- Actions NAVIGATE, CLICK, FILL, SELECT, PRESS; a new tab or window fails clearly. Every
+  checkpoint kind, with download_completed and response_received watched before the action.
+  no_error_banner: no visible role=alert with text (or no visible match for its selector).
+  field_has_value (additive to schema v1) replaces no_error_banner on the examples' fills.
+- Timeouts from Settings; transient retries only for navigate steps' page loads.
+- Inputs via parse_input_value; env-backed SecretResolver (MENDWORK_SECRET_<NAME>), a
+  namespace reserved in Settings (ADR 0003). Secrets never reach stdout, stderr, logs, events,
+  run records, DOM snapshots, or traces; screenshots mask secret-filled fields.
+- Run and StepResult records; artifacts/runs/<run_id>/ with run.json, a screenshot per step,
+  DOM snapshot and trace on failure, and downloads. Versioned events.
+- CLI: mendwork run <workflow.yaml> --input key=value … [--headed] [--slow-mo MS]
+  [--artifacts-dir PATH] [--output human|json]; exit codes 0/1/2/3.
+- Static guard: no file under src/mendwork references "__chaos".
+- Test split: `slow` marker for CLI browser runs, the heal pair sweep, and the in-process
+  portal replays; make check skips them, make check-all and CI run everything, and a static
+  test keeps the split honest. check-all keeps the contract gates (engine 90, domain 95,
+  overall 85); check has its own gates just below the fast suite's figures; a ratchet test
+  keeps every file in engine/replay, engine/verification, and engine/safety at ≥ 90% line
+  coverage from unit tests alone.
 
-Acceptance: make check passes; show the CLI output of both integration scenarios.
+Tests: engine unit tests on fakes (ordering, consensus, identity and drift, arming, retries,
+timeouts, events, exit codes); portal integration with complete download_report runs and
+one inserted navigate that scopes only= to Reports (level 0 with CSV contents,
+change_ids_classes via a lower rank, synonym_rename and dangerous_rename → TargetDrifted with
+wrongActions empty, duplicate_plausible → AmbiguousTarget, remove_target → TargetNotFound,
+reorder_siblings and icon_only_aria succeed, wrong date → CheckpointFailed with screenshot,
+DOM snapshot, and trace); fixture pages (selector disagreement, late render, never-stable
+page, new tab, response arming, replaced element, identity corpus, trace withholding, masks);
+a secret leakage test on a JS-free fixture site; CLI exit codes; Settings secret variables.
+
+Acceptance: make check under 60 s and make check-all pass (report both timings); show a level-0
+success, a natural level-3 Rung 0 stop with its seed and cause, and a level-3 success and why;
+ARCHITECTURE.md and ADR 0007 updated.
 ```
 
 ---

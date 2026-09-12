@@ -121,12 +121,24 @@ class NoErrorBanner(DomainModel):
     selector: Selector | None = None
 
 
+class FieldHasValue(DomainModel):
+    """The fill step's target field now holds the value the step typed.
+
+    Only valid on fill steps. For a secret it checks only that the field is not empty: a
+    secret is never read back, compared, or recorded.
+    """
+
+    kind: Literal[CheckpointKind.FIELD_HAS_VALUE]
+    timeout_ms: TimeoutMs | None = None
+
+
 Checkpoint = Annotated[
     UrlMatches
     | ElementVisible
     | TextPresent
     | DownloadCompleted
     | ResponseReceived
-    | NoErrorBanner,
+    | NoErrorBanner
+    | FieldHasValue,
     Field(discriminator="kind"),
 ]

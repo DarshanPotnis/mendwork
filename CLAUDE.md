@@ -98,6 +98,9 @@ Both are plain JavaScript with **no build step**, type-checked by TypeScript.
 - **Model provider tests:** recorded HTTP fixtures via `respx`. Live calls run only via `make live-providers`, never in CI.
 - **Deterministic always:** fixed seeds, injected clock, no sleeps, no order-dependent tests.
 - Tests that assert on CLI output must read it through the `plain_stdout` fixture (`tests/conftest.py`); rich/typer emit ANSI styling when `GITHUB_ACTIONS`, `FORCE_COLOR`, or `PY_COLORS` is set.
+- Tests that launch Chromium through the CLI (the `cli_browser` fixture), sweep every heal pair, or replay the examples against the portal in-process (`test_replay_portal.py`) are marked `slow`; `tests/unit/test_slow_marker.py` fails when the split drifts.
+- `make check-all`'s coverage gates are the contract; `make check`'s are an early warning set just below the fast suite's figures (ADR 0007).
+- Every file in `engine/replay`, `engine/verification`, and `engine/safety` must keep ≥ 90% line coverage from unit tests alone; `tests/unit/test_coverage_ratchet.py` enforces it.
 - **Coverage gates:** `mendwork.engine` ≥ 90% lines; overall ≥ 85%.
 - **A wrong click is a failing test.** The heal fixture suite's wrong-action count must be exactly 0.
 - Use `hypothesis` for invariants: serialization round-trips, scoring monotonicity, policy ordering.
@@ -114,8 +117,10 @@ Both are plain JavaScript with **no build step**, type-checked by TypeScript.
 | `make typecheck` | mypy --strict |
 | `make imports` | import-linter contracts |
 | `make jscheck` | TypeScript type-check of all browser-side JavaScript (from Phase 1) |
-| `make test` | pytest with coverage gates |
-| `make check` | lint + typecheck + imports + jscheck + test (must pass before any phase is done) |
+| `make test` | pytest with coverage gates, skipping tests marked `slow` |
+| `make test-all` | pytest with coverage gates, including `slow` tests |
+| `make check` | lint + typecheck + imports + jscheck + test (the fast local loop) |
+| `make check-all` | lint + typecheck + imports + jscheck + test-all (what CI runs; must pass before any phase is done) |
 | `make schema` | Regenerate `schemas/workflow.schema.json` from the domain models (a test fails when it is stale) |
 | `make portal` | Serve the chaos portal locally |
 | `make chaos-pairs` | Regenerate `benchmarks/chaos/heal_pairs.json`, the seed for every heal mutation–target pair |
@@ -126,7 +131,7 @@ Both are plain JavaScript with **no build step**, type-checked by TypeScript.
 
 ## Definition of done (every phase and every task)
 
-1. `make check` passes from a clean state.
+1. `make check-all` passes from a clean state.
 2. New behaviour is tested and coverage gates hold.
 3. If the design changed, `ARCHITECTURE.md` is updated and an ADR is added.
 4. Nothing from the Forbidden list is present.

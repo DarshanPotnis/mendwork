@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Annotated, Literal, Self
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
 from mendwork.engine.domain.base import DomainModel, Text
-from mendwork.engine.domain.checkpoints import Checkpoint
+from mendwork.engine.domain.checkpoints import Checkpoint, FieldHasValue
 from mendwork.engine.domain.credentials import detect_secret_field
 from mendwork.engine.domain.enums import ActionType, RiskLevel
 from mendwork.engine.domain.fingerprint import Fingerprint
@@ -48,6 +48,18 @@ class _Step(DomainModel):
             first = self.checkpoints.index(checkpoint)
             if first != index:
                 raise ValueError(f"checkpoints[{index}] duplicates checkpoints[{first}]")
+        return self
+
+    @model_validator(mode="after")
+    def _field_value_checks_need_a_fill(self) -> Self:
+        if self.action is ActionType.FILL:
+            return self
+        for index, checkpoint in enumerate(self.checkpoints):
+            if isinstance(checkpoint, FieldHasValue):
+                raise ValueError(
+                    f"checkpoints[{index}] is field_has_value, which checks the value a fill "
+                    f"step typed; it is only valid on fill steps"
+                )
         return self
 
 

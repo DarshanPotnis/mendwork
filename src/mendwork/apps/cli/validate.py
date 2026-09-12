@@ -51,7 +51,7 @@ def format_problems(source: str, error: WorkflowValidationError) -> str:
     return "\n".join(lines)
 
 
-async def _read_limited(path: Path, limit: int) -> bytes:
+async def read_limited(path: Path, limit: int) -> bytes:
     def read() -> bytes:
         with path.open("rb") as file:
             # One byte past the limit is enough for the codec to report the size.
@@ -69,7 +69,7 @@ def validate(
     """Validate a workflow file; print a summary, or every problem with its line and exit 1."""
     codec = WorkflowYamlCodec(max_bytes=Settings().workflow_max_bytes)
     source = str(workflow)
-    content = asyncio.run(_read_limited(workflow, codec.max_bytes))
+    content = asyncio.run(read_limited(workflow, codec.max_bytes))
     try:
         version = codec.decode(content, source=source)
     except WorkflowValidationError as error:

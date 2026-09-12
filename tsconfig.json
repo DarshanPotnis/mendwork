@@ -11,5 +11,5 @@
     "moduleResolution": "bundler",
     "types": []
   },
-  "include": ["chaos-portal/**/*"]
+  "include": ["chaos-portal/**/*", "src/mendwork/adapters/browser_playwright/js/**/*"]
 }

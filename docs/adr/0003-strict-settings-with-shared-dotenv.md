@@ -70,3 +70,17 @@ their original order, so the environment still overrides `.env`.
   precedence, which `test_the_environment_overrides_the_dotenv_file` guards.
 - A foreign key that begins with `MENDWORK_` would be reported as a typo. Accepted: that
   namespace belongs to us, and the alternative is not noticing our own mistakes.
+- **`MENDWORK_SECRET_` is reserved (Phase 3, ADR 0007).** Secret values are read by the
+  secret resolver at the moment of use, never by Settings. The check carves the namespace
+  out without weakening typo detection:
+  - an environment variable in the namespace is accepted only when named exactly as the
+    resolver looks it up: `MENDWORK_SECRET_` plus the secret name in UPPER_SNAKE_CASE, so
+    `MENDWORK_SECRET_bad-name`, `MENDWORK_SECRET_portal_password`, and `MENDWORK_SECRET_`
+    are rejected with the naming rule;
+  - every other name follows the original path, so `MENDWORK_LOG_LEVLE` still fails with a
+    suggestion and `MENDWORK_SECRETS_X` is an ordinary typo;
+  - any namespace key in `.env` is rejected ("secrets are read from the process environment
+    only"), because the dotenv source lower-cases keys and the resolver would never see it;
+  - no Settings field may start with `secret_`, and a test enforces it;
+  - Settings hides input values in its errors, so a rejected value is never echoed.
+  `tests/unit/test_settings_secret_variables.py` pins each of these.

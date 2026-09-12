@@ -99,6 +99,7 @@ testpaths = ["tests"]
 addopts = ["--strict-markers", "--strict-config"]
 markers = [
     "browser: drives headless Chromium against the locally served chaos portal",
+    "slow: launches Chromium through the CLI or sweeps every heal pair; excluded from make check, run by make check-all and CI",
 ]
 filterwarnings = ["error"]
 xfail_strict = true

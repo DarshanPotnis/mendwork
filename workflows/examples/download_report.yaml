@@ -48,7 +48,7 @@ steps:
         - {strategy: css, value: "#email"}
     value: {kind: input, name: account_email}
     checkpoints:
-      - kind: no_error_banner
+      - kind: field_has_value
 
   - id: fill_password
     intent: Fill the 'Password' field
@@ -68,7 +68,7 @@ steps:
         - {strategy: css, value: "#password"}
     value: {kind: secret, name: portal_password}
     checkpoints:
-      - kind: no_error_banner
+      - kind: field_has_value
 
   - id: sign_in
     intent: Click the 'Sign in' button
@@ -135,7 +135,7 @@ steps:
         - {strategy: css, value: "#date-from"}
     value: {kind: literal, value: "2026-02-10"}
     checkpoints:
-      - kind: no_error_banner
+      - kind: field_has_value
 
   - id: fill_date_to
     intent: Fill the 'To' date field
@@ -155,7 +155,7 @@ steps:
         - {strategy: css, value: "#date-to"}
     value: {kind: literal, value: "2026-04-20"}
     checkpoints:
-      - kind: no_error_banner
+      - kind: field_has_value
 
   - id: apply_filter
     intent: Click the 'Apply filter' button

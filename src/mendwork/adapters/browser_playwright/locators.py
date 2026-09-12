@@ -2,8 +2,8 @@
 
 Building a locator does not touch the page; Playwright resolves it lazily. Scopes are
 applied outermost first, so ``within`` narrows the search before the target is looked
-for. Enforcing "exactly one visible element at every level" is the caller's job (the
-replayer's Rung 0), and it uses these same locators to count.
+for. Enforcing "exactly one visible element at every level" is Rung 0's job, through
+``resolution.resolve_unique``, which applies each level with ``apply_selector``.
 """
 
 from playwright.async_api import Locator, Page
@@ -26,18 +26,16 @@ def build_locator(page: Page, selector: Selector) -> Locator:
 
 
 def scope_locators(page: Page, selector: Selector) -> tuple[Locator, ...]:
-    """A locator for each level of a scoped selector, outermost first, ending with the target.
-
-    Each must resolve to exactly one element for the selector to count as a match.
-    """
+    """A locator for each level of a scoped selector, outermost first, ending with the target."""
     chain = scope_chain(selector)
-    locators = [_apply(page, chain[0])]
+    locators = [apply_selector(page, chain[0])]
     for level in chain[1:]:
-        locators.append(_apply(locators[-1], level))
+        locators.append(apply_selector(locators[-1], level))
     return tuple(locators)
 
 
-def _apply(scope: Page | Locator, selector: Selector) -> Locator:
+def apply_selector(scope: Page | Locator, selector: Selector) -> Locator:
+    """One selector level, searched inside ``scope``, ignoring the selector's own ``within``."""
     match selector:
         case ByTestId():
             return scope.get_by_test_id(selector.value)

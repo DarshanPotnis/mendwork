@@ -3,7 +3,7 @@ NPM ?= npm
 
 .DEFAULT_GOAL := check
 
-.PHONY: install fmt lint typecheck imports jscheck test check schema portal chaos-pairs bench live-providers
+.PHONY: install fmt lint typecheck imports jscheck test test-all check check-all schema portal chaos-pairs bench live-providers
 
 # Run `nvm use` first: .npmrc sets engine-strict, so npm ci fails loudly on the wrong Node.
 install:
@@ -29,13 +29,32 @@ imports:
 jscheck:
 	$(NPM) exec --no -- tsc --project tsconfig.json
 
+# Coverage gates (ADR 0007). The full suite's gates are the contract, enforced by CI through
+# check-all. The fast suite's gates sit just below what it measures, as an early warning.
+FULL_SUITE := full suite, make check-all: the contract
+FAST_SUITE := fast suite, make check: an early warning, not the contract
+
+# $(1) suite label, $(2) engine gate, $(3) engine/domain gate, $(4) overall gate
+define coverage_gates
+	@echo "Coverage gates for the $(1)"
+	@printf '  engine         gate %s%%, measured ' '$(2)'; $(UV) run coverage report --include="*/mendwork/engine/*" --format=total --precision=2 --fail-under=$(2)
+	@printf '  engine/domain  gate %s%%, measured ' '$(3)'; $(UV) run coverage report --include="*/mendwork/engine/domain/*" --format=total --precision=2 --fail-under=$(3)
+	@printf '  overall        gate %s%%, measured ' '$(4)'; $(UV) run coverage report --format=total --precision=2 --fail-under=$(4)
+endef
+
+# Everything except tests marked slow: CLI runs that launch their own Chromium, the full heal
+# pair sweep, and the in-process portal replays.
 test:
-	$(UV) run pytest --cov --cov-report=term-missing
-	$(UV) run coverage report --include="*/mendwork/engine/*" --fail-under=90
-	$(UV) run coverage report --include="*/mendwork/engine/domain/*" --fail-under=95
-	$(UV) run coverage report --fail-under=85
+	$(UV) run pytest -m "not slow" --cov --cov-report=term-missing:skip-covered
+	$(call coverage_gates,$(FAST_SUITE),97,98,91)
+
+test-all:
+	$(UV) run pytest --cov --cov-report=term-missing:skip-covered
+	$(call coverage_gates,$(FULL_SUITE),90,95,85)
 
 check: lint typecheck imports jscheck test
+
+check-all: lint typecheck imports jscheck test-all
 
 # Regenerates the workflow JSON Schema from the domain models; a test fails when it is stale.
 schema:
