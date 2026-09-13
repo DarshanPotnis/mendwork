@@ -135,6 +135,16 @@ class ArtifactStoreUnavailable(InfrastructureError):
     """Run artifacts could not be written."""
 
 
+class RecordingUnusable(MendworkError):
+    """A recording cannot produce a workflow that replays, so it ends and nothing is written.
+
+    ``reason`` names the cause: no selector survived verification, an identity Playwright
+    did not confirm, a page that never stopped changing, a new tab or window, a browser
+    navigation in the middle of a step, a page restored from the back-forward cache, or an
+    element that vanished before its step could be recorded.
+    """
+
+
 class ProviderError(MendworkError):
     """A model provider call failed, timed out, or returned an unusable response."""
 

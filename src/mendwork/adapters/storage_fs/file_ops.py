@@ -43,6 +43,27 @@ class FileOps(Protocol):
         ...
 
 
+def write_new_file(path: Path, data: bytes, ops: FileOps | None = None) -> None:
+    """Write a file that must not exist yet, atomically; raise FileExistsError if it does.
+
+    The same sequence the workflow store publishes with: a temporary file in the same
+    directory, fsync, link(2) to the final name (which never replaces a file), unlink the
+    temporary name, fsync the directory. A reader never sees a partial file.
+    """
+    file_ops = ops if ops is not None else OsFileOps()
+    descriptor, temporary = file_ops.create_temp(path.parent, prefix=f".{path.name}.")
+    try:
+        try:
+            file_ops.write_all(descriptor, data)
+            file_ops.sync_file(descriptor)
+        finally:
+            file_ops.close(descriptor)
+        file_ops.link_exclusive(temporary, path)
+    finally:
+        file_ops.remove(temporary)
+    file_ops.sync_directory(path.parent)
+
+
 class OsFileOps:
     """FileOps on the local POSIX file system."""
 

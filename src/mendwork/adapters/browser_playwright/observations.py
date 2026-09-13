@@ -78,6 +78,10 @@ class Observations:
         self._watches[watch_id] = watch
         return watch_id
 
+    def started(self, watch_id: WatchId) -> int:
+        """How many downloads started since the watch began and are not yet taken."""
+        return self._require(watch_id).downloads.qsize()
+
     def unwatch(self, watch_id: WatchId) -> None:
         """Detach a watch's listeners and forget what it recorded."""
         watch = self._watches.pop(watch_id, None)

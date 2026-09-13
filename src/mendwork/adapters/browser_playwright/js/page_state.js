@@ -3,14 +3,39 @@
   /**
    * Answer one request about the document's state, installing that state on first use.
    *
-   * The state is a single frozen, non-configurable global, window.__mendwork, holding a
-   * document token and a count of DOM mutation batches seen by a MutationObserver. The page
-   * itself is never modified: nothing is added to the DOM and no page global is patched.
+   * The state lives in the `pageState` slot of Mendwork's one page global, the
+   * window.__mendwork namespace: a document token and a count of DOM mutation batches seen
+   * by a MutationObserver. The page itself is never modified: nothing is added to the DOM
+   * and no page global is patched.
    *
    * @param {PageStateRequest} request
    * @returns {Promise<PageStateReply>}
    */
   async (request) => {
+    // mendwork-namespace:begin
+    // Mendwork's one page global: a namespace whose slots each page script fills once. Page
+    // scripts cannot import each other, so this block is repeated verbatim in every script
+    // that needs the namespace, and a test keeps the copies byte-identical.
+    const namespace = (() => {
+      const found = Object.getOwnPropertyDescriptor(window, "__mendwork");
+      if (found === undefined) {
+        /** @type {MendworkNamespace} */
+        const created = Object.create(null);
+        Object.defineProperty(window, "__mendwork", {
+          value: created,
+          configurable: false,
+          enumerable: false,
+          writable: false,
+        });
+        return created;
+      }
+      if (typeof found.value !== "object" || found.value === null || found.writable !== false) {
+        throw new Error("window.__mendwork belongs to the page, so Mendwork cannot use it");
+      }
+      return /** @type {MendworkNamespace} */ (found.value);
+    })();
+    // mendwork-namespace:end
+
     /**
      * @param {string} token
      * @returns {MendworkPageState}
@@ -86,7 +111,7 @@
 
       /** @type {MendworkPageState} */
       const state = Object.freeze({ token, mutations: () => count, whenChanged, whenQuiet });
-      Object.defineProperty(window, "__mendwork", {
+      Object.defineProperty(namespace, "pageState", {
         value: state,
         configurable: false,
         enumerable: false,
@@ -95,7 +120,7 @@
       return state;
     };
 
-    const state = window.__mendwork ?? install(request.token);
+    const state = namespace.pageState ?? install(request.token);
     /**
      * @param {boolean} quiet
      * @param {boolean} changed

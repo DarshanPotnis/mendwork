@@ -7,6 +7,7 @@ from collections.abc import Mapping
 
 from mendwork.adapters.artifacts_local.store import LocalArtifactStore
 from mendwork.adapters.browser_playwright.launcher import LaunchOptions, SessionOptions
+from mendwork.adapters.browser_playwright.recording.launcher import RecordingOptions
 from mendwork.adapters.secrets_env.resolver import EnvSecretResolver
 from mendwork.adapters.system.clock import SystemClock
 from mendwork.adapters.system.randomness import SystemRandomSource
@@ -14,8 +15,10 @@ from mendwork.adapters.system.run_ids import TimestampRunIds
 from mendwork.adapters.system.timer import AsyncioTimer
 from mendwork.engine.ports.browser import BrowserLauncher
 from mendwork.engine.ports.events import EventSink
+from mendwork.engine.recording.config import RecordingConfig
 from mendwork.engine.replay.config import ReplayConfig, RetryPolicy
 from mendwork.engine.replay.replayer import Replayer
+from mendwork.engine.safety.risk import RiskVocabulary
 from mendwork.settings import Settings
 
 
@@ -52,6 +55,49 @@ def launch_options(settings: Settings, *, headed: bool, slow_mo_ms: int | None) 
     """How Chromium is launched; command-line flags override Settings."""
     return LaunchOptions(
         headless=settings.browser_headless and not headed,
+        slow_mo_ms=settings.browser_slow_mo_ms if slow_mo_ms is None else slow_mo_ms,
+    )
+
+
+def risk_vocabulary(settings: Settings) -> RiskVocabulary:
+    """The risk classification vocabulary, taken from Settings."""
+    return RiskVocabulary(
+        danger_words=settings.risk_danger_words,
+        soft_verbs=settings.risk_soft_verbs,
+        view_state_nouns=settings.risk_view_state_nouns,
+        read_words=settings.risk_read_words,
+        session_phrases=settings.risk_session_phrases,
+    )
+
+
+def recording_config(settings: Settings) -> RecordingConfig:
+    """The recorder's configuration, taken from Settings."""
+    return RecordingConfig(
+        step_timeout_ms=settings.step_timeout_ms,
+        settle_timeout_ms=settings.settle_timeout_ms,
+        settle_quiet_frames=settings.settle_quiet_frames,
+        navigation_timeout_ms=settings.navigation_timeout_ms,
+        checkpoint_timeout_ms=settings.record_checkpoint_timeout_ms,
+        scope_ancestors_max=settings.record_scope_ancestors_max,
+        landmarks_max=settings.record_landmarks_max,
+        retry=replay_config(settings).retry,
+        risk=risk_vocabulary(settings),
+    )
+
+
+def recording_options(settings: Settings) -> RecordingOptions:
+    """How a recording's browser context is set up."""
+    return RecordingOptions(
+        viewport_width=settings.viewport_width,
+        viewport_height=settings.viewport_height,
+        default_timeout_ms=settings.step_timeout_ms,
+    )
+
+
+def record_launch_options(settings: Settings, *, slow_mo_ms: int | None) -> LaunchOptions:
+    """A recording is always headed: a person performs the task in the window."""
+    return LaunchOptions(
+        headless=False,
         slow_mo_ms=settings.browser_slow_mo_ms if slow_mo_ms is None else slow_mo_ms,
     )
 

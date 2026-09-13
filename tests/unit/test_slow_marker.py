@@ -1,10 +1,10 @@
 """Slow tests stay marked slow, so the fast suite keeps its time budget.
 
-Slow means launching Chromium through the CLI, sweeping every heal pair, or replaying the
-examples against the portal in-process. `make check` skips `slow`; `make check-all` and CI
-run everything. A test that reaches a slow fixture from an unmarked module, or a slow module
-that loses its marker, would quietly move into `make check`, so this guard reads every test
-module and fails first.
+Slow means launching Chromium through the CLI, sweeping every heal pair, replaying the
+examples against the portal in-process, or recording in Chromium. `make check` skips `slow`;
+`make check-all` and CI run everything. A test that reaches a slow fixture from an unmarked
+module, or a slow module that loses its marker, would quietly move into `make check`, so
+this guard reads every test module and fails first.
 """
 
 import ast
@@ -15,7 +15,16 @@ from typing import Final
 TESTS: Final = Path(__file__).resolve().parents[1]
 SLOW_FIXTURES: Final = frozenset({"cli_browser", "heal_pair_sweep"})
 # Slow because of what the whole module does, not because of a fixture it uses (ADR 0007).
-SLOW_MODULES: Final = frozenset({"integration/test_replay_portal.py"})
+SLOW_MODULES: Final = frozenset(
+    {
+        "integration/test_replay_portal.py",
+        "integration/test_recording_boundary.py",
+        "integration/test_recording_interactions.py",
+        "integration/test_recording_portal.py",
+        "integration/test_recording_secrets.py",
+        "integration/test_recording_targets.py",
+    }
+)
 
 
 def _modules() -> Iterator[tuple[Path, ast.Module]]:

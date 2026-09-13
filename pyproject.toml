@@ -9,6 +9,7 @@ description = "Self-healing browser automation: record once, replay free, repair
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "playwright>=1.62",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "pyyaml>=6.0.2",
@@ -25,7 +26,6 @@ dev = [
     "import-linter>=2.1",
     "jsonschema>=4.26.0",
     "mypy>=1.13",
-    "playwright>=1.62",
     "pre-commit>=4.0",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",

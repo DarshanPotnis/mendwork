@@ -3,7 +3,7 @@ NPM ?= npm
 
 .DEFAULT_GOAL := check
 
-.PHONY: install fmt lint typecheck imports jscheck test test-all check check-all schema portal chaos-pairs bench live-providers
+.PHONY: install fmt lint typecheck imports jscheck test test-all check check-all schema portal chaos-pairs recording-golden bench live-providers
 
 # Run `nvm use` first: .npmrc sets engine-strict, so npm ci fails loudly on the wrong Node.
 install:
@@ -43,10 +43,10 @@ define coverage_gates
 endef
 
 # Everything except tests marked slow: CLI runs that launch their own Chromium, the full heal
-# pair sweep, and the in-process portal replays.
+# pair sweep, the in-process portal replays, and recordings in Chromium.
 test:
 	$(UV) run pytest -m "not slow" --cov --cov-report=term-missing:skip-covered
-	$(call coverage_gates,$(FAST_SUITE),97,98,91)
+	$(call coverage_gates,$(FAST_SUITE),97,98,90)
 
 test-all:
 	$(UV) run pytest --cov --cov-report=term-missing:skip-covered
@@ -66,6 +66,10 @@ portal:
 # Rewrites benchmarks/chaos/heal_pairs.json from the portal's own declarations and selection.
 chaos-pairs:
 	$(UV) run python -m benchmarks.chaos.heal_pairs
+
+# Rewrites tests/fixtures/recordings/download_report.yaml from a fresh scripted recording.
+recording-golden:
+	$(UV) run python -m tests.integration.regenerate_recording_golden
 
 bench:
 	@echo "make bench: available from Phase 9"

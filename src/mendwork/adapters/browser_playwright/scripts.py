@@ -1,7 +1,8 @@
 """Page scripts: shipped as package data beside this module and loaded at runtime.
 
-Each ``js/*.js`` file is a single function expression, type-checked by ``make jscheck``
-and evaluated with its arguments by Playwright. JavaScript never lives in Python strings.
+Each ``js/*.js`` file is type-checked by ``make jscheck``. All but one are a single function
+expression evaluated with its arguments by Playwright; ``recorder.js`` is an init script
+that runs itself in every new document. JavaScript never lives in Python strings.
 """
 
 from dataclasses import dataclass
@@ -13,12 +14,19 @@ SCRIPT_PACKAGE: Final = "mendwork.adapters.browser_playwright"
 
 @dataclass(frozen=True, slots=True)
 class PageScripts:
-    """The source of every page script the adapter evaluates."""
+    """The source of every page script the adapter evaluates or installs."""
 
     page_state: str
     element_keys: str
     element_identity: str
     field_value: str
+    recorder: str
+    recorder_element: str
+    recorder_control: str
+    element_facts: str
+    element_ancestors: str
+    scope_facts: str
+    field_text: str
 
     @classmethod
     def load(cls) -> "PageScripts":
@@ -33,4 +41,11 @@ class PageScripts:
             element_keys=read("element_keys"),
             element_identity=read("element_identity"),
             field_value=read("field_value"),
+            recorder=read("recorder"),
+            recorder_element=read("recorder_element"),
+            recorder_control=read("recorder_control"),
+            element_facts=read("element_facts"),
+            element_ancestors=read("element_ancestors"),
+            scope_facts=read("scope_facts"),
+            field_text=read("field_text"),
         )

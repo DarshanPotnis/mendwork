@@ -11,6 +11,8 @@ import typer
 from pydantic import ValidationError
 
 from mendwork.apps.cli.exit_codes import ExitCode
+from mendwork.apps.cli.record import build_record_command
+from mendwork.apps.cli.record_runtime import production_dependencies
 from mendwork.apps.cli.run import run
 from mendwork.apps.cli.schema import schema
 from mendwork.apps.cli.validate import validate
@@ -25,6 +27,7 @@ app = typer.Typer(
 app.command()(validate)
 app.command()(schema)
 app.command()(run)
+app.command(name="record")(build_record_command(production_dependencies()))
 
 
 def _print_version(requested: bool) -> None:

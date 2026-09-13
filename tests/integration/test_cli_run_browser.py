@@ -7,13 +7,12 @@ it and prove nothing.
 """
 
 import base64
-import html
 import json
 import zipfile
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Final
-from urllib.parse import quote, quote_plus
+from urllib.parse import quote_plus
 
 import pytest
 from typer.testing import CliRunner, Result
@@ -23,6 +22,7 @@ from mendwork.apps.cli.main import app
 from mendwork.apps.portal.server import PortalServer
 from mendwork.engine.domain.documents import parse_workflow_document
 from tests.integration.portal import DEMO_EMAIL, DEMO_PASSWORD
+from tests.secret_search import every_file, leaks
 from tests.workflows import REPO_ROOT, Document, example_path
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
@@ -208,40 +208,6 @@ def fixture_workflow(failing_step: str) -> Document:
         "secrets": ["site_password"],
         "steps": steps,
     }
-
-
-def encodings(secret: str) -> list[bytes]:
-    """The secret in every form this test searches for, derived independently of the product."""
-    raw = secret.encode()
-    forms = {
-        raw,
-        json.dumps(secret)[1:-1].encode(),
-        json.dumps(secret, ensure_ascii=False)[1:-1].encode(),
-        html.escape(secret).encode(),
-        quote(secret, safe="").encode(),
-        quote_plus(secret).encode(),
-        secret.encode("utf-16-le"),
-    }
-    for offset in range(3):
-        encoded = base64.b64encode(b"\x00" * offset + raw)
-        forms.add(encoded[(offset * 8 + 5) // 6 : ((offset + len(raw)) * 8) // 6])
-    return sorted(forms)
-
-
-def leaks(data: bytes, secret: str) -> list[bytes]:
-    return [form for form in encodings(secret) if form in data]
-
-
-def every_file(directory: Path) -> Iterator[tuple[str, bytes]]:
-    for path in sorted(directory.rglob("*")):
-        if not path.is_file():
-            continue
-        data = path.read_bytes()
-        yield str(path), data
-        if path.suffix == ".zip":
-            with zipfile.ZipFile(path) as archive:
-                for member in archive.namelist():
-                    yield f"{path}!{member}", archive.read(member)
 
 
 @pytest.fixture(scope="module")

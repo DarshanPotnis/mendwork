@@ -27,6 +27,59 @@ from mendwork.adapters.secrets_env.naming import (
 from mendwork.engine.safety.redaction import DEFAULT_SENSITIVE_KEY_FRAGMENTS
 
 ENV_PREFIX: Final = "MENDWORK_"
+# Danger words mark stored data changing or other people affected. "remove" and its kin are
+# also soft verbs: acting on view state ("Remove filter") they change nothing stored.
+DEFAULT_DANGER_WORDS: Final = frozenset(
+    {
+        "approve",
+        "archive",
+        "buy",
+        "cancel",
+        "checkout",
+        "confirm",
+        "deactivate",
+        "delete",
+        "destroy",
+        "erase",
+        "pay",
+        "publish",
+        "purchase",
+        "purge",
+        "reject",
+        "remove",
+        "reset",
+        "revoke",
+        "save",
+        "send",
+        "submit",
+        "transfer",
+        "unsubscribe",
+    }
+)
+DEFAULT_SOFT_VERBS: Final = frozenset({"remove", "reset"})
+DEFAULT_VIEW_STATE_NOUNS: Final = frozenset(
+    {"column", "columns", "filter", "filters", "search", "selection", "sort", "sorting"}
+)
+DEFAULT_READ_WORDS: Final = DEFAULT_VIEW_STATE_NOUNS | frozenset(
+    {
+        "back",
+        "collapse",
+        "details",
+        "download",
+        "expand",
+        "export",
+        "find",
+        "open",
+        "preview",
+        "print",
+        "refresh",
+        "show",
+        "view",
+    }
+)
+DEFAULT_SESSION_PHRASES: Final = frozenset(
+    {"log in", "log out", "login", "logout", "sign in", "sign out"}
+)
 SECRETS_NOT_IN_DOTENV: Final = "secrets are read from the process environment only, never from .env"
 _MAX_TIMEOUT_MS: Final = 600_000
 
@@ -181,6 +234,23 @@ class Settings(BaseSettings):
     # Record a Playwright trace and keep it when a step fails, unless it could hold a secret.
     trace_on_failure: bool = True
 
+    # Recording. A proposed checkpoint is verified when its step is recorded, against a page
+    # that has already settled and been observed, so a proposal that fails rarely passes by
+    # waiting longer; a person is waiting on it.
+    record_checkpoint_timeout_ms: int = Field(default=1_000, ge=1, le=_MAX_TIMEOUT_MS)
+    # How many ancestors of an ambiguous target are tried as a selector scope.
+    record_scope_ancestors_max: int = Field(default=6, ge=1, le=20)
+    # How many visible headings and landmarks are read before and after each recorded step.
+    record_landmarks_max: int = Field(default=40, ge=1, le=500)
+
+    # Risk classification by consequence (ARCHITECTURE.md §8): words read in a control's
+    # name, lower case, one word each (session phrases may have several).
+    risk_danger_words: frozenset[str] = DEFAULT_DANGER_WORDS
+    risk_soft_verbs: frozenset[str] = DEFAULT_SOFT_VERBS
+    risk_view_state_nouns: frozenset[str] = DEFAULT_VIEW_STATE_NOUNS
+    risk_read_words: frozenset[str] = DEFAULT_READ_WORDS
+    risk_session_phrases: frozenset[str] = DEFAULT_SESSION_PHRASES
+
     @classmethod
     def settings_customise_sources(
         cls,
@@ -216,4 +286,21 @@ class Settings(BaseSettings):
     def _retry_delays_are_ordered(self) -> Self:
         if self.retry_max_delay_ms < self.retry_initial_delay_ms:
             raise ValueError("retry_max_delay_ms must not be less than retry_initial_delay_ms")
+        return self
+
+    @model_validator(mode="after")
+    def _risk_vocabulary_is_consistent(self) -> Self:
+        words = (
+            self.risk_danger_words
+            | self.risk_soft_verbs
+            | self.risk_view_state_nouns
+            | self.risk_read_words
+            | self.risk_session_phrases
+        )
+        if any(not word.strip() or word != word.lower() for word in words):
+            raise ValueError("risk vocabulary entries must be non-blank and lower case")
+        if not self.risk_soft_verbs <= self.risk_danger_words:
+            raise ValueError("every risk soft verb must also be a risk danger word")
+        if not self.risk_view_state_nouns <= self.risk_read_words:
+            raise ValueError("every risk view-state noun must also be a risk read word")
         return self

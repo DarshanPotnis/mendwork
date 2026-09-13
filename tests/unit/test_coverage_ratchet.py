@@ -21,8 +21,14 @@ PACKAGES: Final = (
     "src/mendwork/engine/replay/",
     "src/mendwork/engine/verification/",
     "src/mendwork/engine/safety/",
+    "src/mendwork/engine/recording/",
 )
-UNIT_TESTS: Final = ("tests/unit/replay", "tests/unit/test_observability.py")
+UNIT_TESTS: Final = (
+    "tests/unit/replay",
+    "tests/unit/recording",
+    "tests/unit/safety",
+    "tests/unit/test_observability.py",
+)
 
 
 def _environment() -> dict[str, str]:

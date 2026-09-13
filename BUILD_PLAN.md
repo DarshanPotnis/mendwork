@@ -203,24 +203,53 @@ ARCHITECTURE.md and ADR 0007 updated.
 
 ```
 Phase 4 — Recorder.
-Read ARCHITECTURE.md §5, §8 (risk classification). Present a plan and wait for approval.
+Read CLAUDE.md, ARCHITECTURE.md §4–§8, ADRs 0004–0007, and chaos-portal/README.md. Present a plan
+and wait for approval. Goal: `mendwork record` opens a browser, watches a person do a task, and
+writes a workflow Phase 3's replayer runs without hand-editing.
 
-- `mendwork record <start-url> --out <workflow.yaml>` opens a headed browser and captures click, fill, select, and press events via an injected script plus expose_binding. A click that starts a download is recorded as a CLICK with a download_completed checkpoint; there is no download action.
-- The injected script lives in src/mendwork/adapters/browser_playwright/js/recorder.js, follows CLAUDE.md "Browser-side JavaScript standards" (self-contained, `// @ts-check`, JSDoc types, single namespaced global, never reads password values), ships as package data, is loaded at runtime, and is added to the tsconfig include so `make jscheck` covers it.
-- For each target build a full Fingerprint and a ranked selector list (test_id > role_name > label > placeholder > text > css). Accessible role/name must be consistent with how Playwright's locators resolve them — verify each generated selector resolves to exactly one element at record time and drop those that don't.
-- Merge consecutive keystrokes into a single FILL; ignore focus-only clicks; handle navigation between steps.
-- Auto-propose checkpoints per step: URL change, newly visible heading/landmark, download event.
-- Draft intent sentence from role + accessible name (no AI), e.g. "Click the 'Download CSV' button".
-- Risk classification by consequence as a pure function (engine/safety/risk.py): SAFE reads or navigates only (links, filters, downloads, opening details); CAUTION changes session or unsaved form state reversibly (fills, sign in, sign out); IRREVERSIBLE changes stored data or affects others (submitting orders, paying, deleting, sending, saving settings). Form submission and configurable danger keywords are signals, not rules; when classification is unsure, choose the stricter level.
-- FILL on password/secret-like fields writes a secret reference, prompting for the secret name at the end of recording. Use the domain's detect_secret_field on the fingerprint, and also the live element (a field masked by CSS has no telling attribute).
+Capture
+- `mendwork record <url> --out <path> [--verify/--no-verify] [--input name=VALUE] [--slow-mo MS]`
+  opens a headed browser and records until Ctrl+C or the window closes.
+- recorder.js (an init script with expose_binding, reinstalled in every document) holds back
+  plain clicks and Enter/Escape/Space; the recorder verifies the target and performs the action
+  with the replayer's primitives (arm, act, disarm). Fields report once per committed edit.
+  Element identity comes from element_identity.js and selector mapping from locators.py; no
+  second role or name logic. window.__mendwork becomes a namespace (pageState, recorder), its
+  bootstrap kept byte-identical by a test; the binding global is deleted at install.
+- Event hygiene: keystrokes merge into one FILL; focus-only, background, and native-picker clicks
+  are not steps; a navigating click is one step; a child click records its actionable ancestor.
+- Ignorable (notice, recording continues): modified clicks and keys, double-clicks, file inputs,
+  frames, controls not ready, interactions during a step. Fatal (nothing written): no surviving
+  selector, unconfirmed identity, PageNeverStable, a new tab, a browser navigation inside a step
+  window, a page restore, an element gone before its step.
+- Navigations outside step windows: browser-started (CDP frameRequestedNavigation absent) become
+  NAVIGATE steps; page-started are notices.
+- Secrets: no page message has a value field; credential fields (detect_secret_field or masked on
+  the page, CSS masks included) become secret references without their content being read; a
+  test proves it on the inbound transcript at the binding boundary.
 
-Tests:
-- recording driven by scripted Playwright interactions (not manual) against chaos portal level 0 produces YAML matching a golden file (ignoring timestamps)
-- the recorded workflow replays successfully with `mendwork run`
-- risk classification table-driven tests, including tricky cases ("Submit feedback", "Remove filter", "Apply filter" as a form submit that stays SAFE, "Sign in" as CAUTION, "Save settings" as IRREVERSIBLE)
-- the recorder.js asset loads from an installed wheel, not just from the source tree
+Producing the workflow
+- Fingerprint with ranked, verified selectors (test_id > role_name incl. own-text substring >
+  label > placeholder > text > css); ambiguous candidates scoped by ancestors (rows first, depth
+  ≤ 2); the fingerprint proven through Rung 0.
+- Checkpoints proposed (URL path, new heading/landmark, live-region text, download, form
+  submission → no_error_banner, field_has_value) and verified at record time; failures dropped.
+- Intents and "<n>. <ACTION> <target>" descriptions without AI. Risk by consequence in
+  engine/safety/risk.py; unknown is CAUTION; danger words IRREVERSIBLE on any element.
+- Secret names prompted with defaults; start URL and email/username values proposed as inputs.
 
-Acceptance: make check passes; demonstrate record → run green.
+Prove it
+- Validate, write without overwriting, then replay in a fresh browser; success only if the replay
+  passes. --no-verify skips it with a warning. Exit codes 0/1/2/3 as in Phase 3.
+
+Tests: golden download_report recording (make recording-golden); record → replay with a 14-row
+CSV; view_order_detail's View scoped to its row; selector drop and no-survivor failure; event
+hygiene; ignorable and fatal paths incl. ctrl-click then click = one step; secrets at the binding
+boundary and in every output; risk tables; checkpoint verification and drops; instability;
+recorder.js loads from the built wheel; slow markers.
+
+Acceptance: make check under 60 s and make check-all under 120 s (caffeinate -i), both coverage
+sets, the ratchet including engine/recording; ARCHITECTURE.md, BUILD_PLAN.md, and ADR 0008 updated.
 ```
 
 ---

@@ -101,18 +101,25 @@ class ChromiumLauncher:
     async def _launched(self) -> PlaywrightLauncher:
         if self._inner is not None:
             return self._inner
-        try:
-            self._playwright = await async_playwright().start()
-            self._browser = await self._playwright.chromium.launch(
-                headless=self._launch.headless, slow_mo=self._launch.slow_mo_ms
-            )
-        except PlaywrightError as error:
-            raise BrowserUnavailable(
-                "could not launch Chromium; install it with `make install`",
-                detail=first_line(error),
-            ) from error
+        self._playwright, self._browser = await start_chromium(self._launch)
         self._inner = await PlaywrightLauncher.create(self._browser, self._options)
         return self._inner
+
+
+async def start_chromium(launch: LaunchOptions) -> tuple[Playwright, Browser]:
+    """Start Playwright and launch Chromium, or raise BrowserUnavailable."""
+    playwright = await async_playwright().start()
+    try:
+        browser = await playwright.chromium.launch(
+            headless=launch.headless, slow_mo=launch.slow_mo_ms
+        )
+    except PlaywrightError as error:
+        await playwright.stop()
+        raise BrowserUnavailable(
+            "could not launch Chromium; install it with `make install`",
+            detail=first_line(error),
+        ) from error
+    return playwright, browser
 
 
 @asynccontextmanager
@@ -122,7 +129,7 @@ async def open_session(
     """One run's context, page, downloads directory, and trace; all removed afterwards."""
     workdir = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix=f"mendwork-{run_id}-"))
     try:
-        context = await _new_context(browser, options)
+        context = await new_context(browser, options)
         tracer = TraceRecorder(context, workdir, enabled=options.trace_on_failure)
         try:
             context.set_default_timeout(options.default_timeout_ms)
@@ -140,10 +147,11 @@ async def open_session(
                 if not is_closed(error):
                     raise
     finally:
-        await asyncio.to_thread(_remove, workdir)
+        await asyncio.to_thread(remove_workdir, workdir)
 
 
-async def _new_context(browser: Browser, options: SessionOptions) -> BrowserContext:
+async def new_context(browser: Browser, options: SessionOptions) -> BrowserContext:
+    """A fresh context: its own cookies and storage, the configured viewport, downloads on."""
     try:
         return await browser.new_context(
             viewport={"width": options.viewport_width, "height": options.viewport_height},
@@ -155,7 +163,8 @@ async def _new_context(browser: Browser, options: SessionOptions) -> BrowserCont
         ) from error
 
 
-def _remove(workdir: Path) -> None:
+def remove_workdir(workdir: Path) -> None:
+    """Delete a session's temporary directory, logging rather than failing if it cannot."""
     try:
         shutil.rmtree(workdir)
     except OSError as error:

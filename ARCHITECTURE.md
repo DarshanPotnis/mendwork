@@ -114,8 +114,10 @@ mendwork/
 │   │   └── errors.py
 │   ├── adapters/
 │   │   ├── browser_playwright/   # BrowserPort: launcher, session, Rung 0 primitives, tracing
-│   │   │   └── js/               # page scripts: page state, element identity and keys, field value;
-│   │   │                         #   later the recorder, candidate extraction, set-of-marks
+│   │   │   ├── recording/        # RecordingBrowser: recorder channel, messages, navigation log, sessions
+│   │   │   └── js/               # page scripts: page state, element identity and keys, field value,
+│   │   │                         #   the recorder and its element facts; later candidate extraction,
+│   │   │                         #   set-of-marks
 │   │   ├── models/               # fake.py, ollama.py, gemini.py, openai_compatible.py, anthropic.py
 │   │   ├── workflow_yaml/        # strict YAML decoding with line numbers, deterministic encoding
 │   │   ├── storage_fs/           # WorkflowStore on files: one directory per workflow, no-overwrite publish
@@ -328,15 +330,50 @@ class HealAttempt(BaseModel):          # Phase 5
   - `WorkflowValidationError`, which carries every `ValidationIssue` (path, message, line, column, step id)
     - `UnsupportedSchemaVersion`
   - `RunInputError`, which carries every issue with the supplied inputs
+  - `RecordingUnusable`: a recording cannot produce a replayable workflow, so nothing is written
   - `InfrastructureError`
     - `BrowserUnavailable`
     - `ArtifactStoreUnavailable`
 
-**Ports so far:** `Clock`, `WorkflowStore`, and from Phase 3 `BrowserLauncher`/`BrowserPort`, `ArtifactStore`, `EventSink`, `SecretResolver`, and the small ports that keep the engine deterministic: `Timer` (monotonic time and backoff pauses), `RandomSource` (jitter), and `RunIdGenerator`. `ModelPort` arrives in Phase 6. A store instance is bound to one tenant when it is constructed, so its methods take no workspace. Port data are plain models; no Playwright type crosses a port.
+**Ports so far:** `Clock`, `WorkflowStore`, and from Phase 3 `BrowserLauncher`/`BrowserPort`, `ArtifactStore`, `EventSink`, `SecretResolver`, and the small ports that keep the engine deterministic: `Timer` (monotonic time and backoff pauses), `RandomSource` (jitter), and `RunIdGenerator`. From Phase 4, recording adds `RecordingLauncher`/`RecordingBrowser` (a BrowserPort plus page events, element facts, and the hold-back handshake), `RecordingObserver`, and `StopSignal`. `ModelPort` arrives in Phase 6. A store instance is bound to one tenant when it is constructed, so its methods take no workspace. Port data are plain models; no Playwright type crosses a port.
 
 ---
 
-## 6. Run lifecycle
+## 6. Recording and run lifecycle
+
+### Recording
+
+`mendwork record <start-url> --out <file>` turns one performance of a task into version 1 of a workflow that is proven to replay. Details: ADR 0008.
+
+- **Hold back, verify, perform.** An init script in every document holds back plain clicks and Enter, Escape, and Space. For each one, the recorder:
+  1. verifies the target;
+  2. arms the page and performs the action with the replayer's own primitives;
+  3. disarms the page and settles;
+  4. records the step.
+
+  Typing stays native: a field is reported once, when its edit is committed.
+- **Ignorable versus fatal.**
+  - **Ignorable, with a notice, and recording continues:** modified clicks and keys, double-clicks, file inputs, frames, clicks on controls that were not ready, and anything started while a step is being recorded.
+  - **Fatal, and nothing is written:** no surviving selector, an unconfirmed identity, a page that never settles, a new tab, a browser navigation during a step, a back-forward-cache restore, or an element that vanished before its step was recorded.
+- **Navigations.**
+  - A commit inside a step's window belongs to that step.
+  - Outside any window, a browser-started navigation (address bar, back, forward, reload) is a NAVIGATE step.
+  - A page-started navigation outside any window is not a step.
+- **Selectors.** Candidates are ranked test_id > role_name (full name, then the element's own text) > label > placeholder > text > css.
+  - Each candidate is kept only if it resolves, in a consistent snapshot, to exactly the recorded element.
+  - An ambiguous candidate is scoped by its ancestors: rows by row header first, at most two levels deep.
+  - The fingerprint must then resolve through Rung 0 to the same element.
+- **Checkpoints.** Proposed from before and after observations (§8) and verified at record time; one that fails is dropped with a warning.
+- **Secrets.**
+  - No page message can carry a value.
+  - A credential field (`detect_secret_field`, or masked on the page) becomes a secret reference without its content ever being read.
+  - Every payload from the page passes an observer a test inspects.
+- **Naming and writing.**
+  - Secrets are named after recording stops; the start URL and email- or username-like values are proposed as inputs, each with a name and a description derived from the start URL's path or the field's label. The person can answer `name` or `name: description`.
+  - The workflow is validated, written without overwriting, and replayed in a fresh browser.
+  - Only a successful replay reports the recording as verified; `--no-verify` skips it with a warning.
+
+### Running
 
 1. **Preflight**, which creates nothing: load the `WorkflowVersion`, bind run inputs (required, defaults, unknown names), and check that every declared secret can be resolved. Secret values are resolved only in memory, at the moment of use.
 2. Check the start URL against the workspace's egress policy (Phase 7).
@@ -425,7 +462,16 @@ Every rung emits a `HealAttempt` event with its full evidence, so every decision
 
 ### Checkpoints
 
-Recording auto-proposes checkpoints: a URL change, a new heading or landmark becoming visible, a download event, or a network response. Users can edit them. Every waiting checkpoint has a timeout (its own `timeout_ms` or the runtime default) and waits for page changes or events, never for time. **There are no fixed sleeps anywhere.**
+Recording auto-proposes checkpoints from what a step changed, and keeps only those that pass when the step is recorded:
+
+- a changed URL path gives `url_matches` with a host-agnostic regex;
+- a heading or named landmark that became visible gives `element_visible`;
+- a live region whose text changed without a navigation gives `text_present`;
+- a completed download gives `download_completed`;
+- a form submission gives `no_error_banner`;
+- a fill gives `field_has_value`.
+
+Response checkpoints are not proposed. Users can edit any of them. Every waiting checkpoint has a timeout (its own `timeout_ms` or the runtime default) and waits for page changes or events, never for time. **There are no fixed sleeps anywhere.**
 
 - **Order:** as written, with `no_error_banner` last and checked once.
 - **Watched before the action:** `download_completed` and `response_received`, whose listeners exist before the action is dispatched.
@@ -454,8 +500,14 @@ Risk is classified **by consequence**, not by mechanism:
 | `CAUTION` | Session or unsaved form state, reversibly | fills, sign in, sign out |
 | `IRREVERSIBLE` | Stored data, or something other people see | submitting orders, paying, deleting, sending, saving settings |
 
-- **Signals, not rules.** Submitting a form and a name matching configurable danger keywords (delete, remove, pay, purchase, submit, send, confirm, transfer) are signals. A filter form is submitted and is still `SAFE`; a plain button named "Delete" is `IRREVERSIBLE`.
-- **When classification is unsure, choose the stricter level.**
+- **Signals, not rules.** Submitting a form and a name matching configurable danger keywords (delete, remove, pay, purchase, submit, send, confirm, transfer, save, …) are signals. A filter form is submitted and is still `SAFE`; a plain button named "Delete" is `IRREVERSIBLE`.
+- **The order is the policy** (`engine/safety/risk.py`, a pure function):
+  1. A danger word is `IRREVERSIBLE` on any element, unless every danger word is a soft verb acting on view state ("Remove filter").
+  2. Signing in or out, or submitting a form that holds a password, is `CAUTION`.
+  3. Read words, a download, a plain link, or a tab are `SAFE`.
+  4. A form control is `CAUTION`.
+- **Unknown is `CAUTION`.** A plain button or a submit with no recognised word ("Continue", "Next", "OK") changes something reversible as far as anyone can tell. Calling it irreversible would make approvals so frequent that people stop reading them. Stricter is chosen within this order, never by defaulting to `IRREVERSIBLE`.
+- **The vocabulary lives in Settings** (`MENDWORK_RISK_*`). Soft verbs must be danger words, and view-state nouns must be read words.
 - **Overrides.** Users can raise a step's risk level, but cannot lower an auto-detected `IRREVERSIBLE` without an audit entry.
 
 ### Egress policy (SSRF protection)
