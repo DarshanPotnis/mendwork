@@ -92,16 +92,13 @@ def classify_risk(signals: RiskSignals, vocabulary: RiskVocabulary) -> RiskAsses
     if signals.action in {ActionType.FILL, ActionType.SELECT}:
         return _assess(RiskLevel.CAUTION, "changes unsaved form state")
 
-    tokens = tokenize(signals.name or "")
-    danger = _danger_words(tokens, vocabulary)
+    danger = danger_words_in(signals.name, vocabulary)
     if danger:
         return _assess(RiskLevel.IRREVERSIBLE, f"its name contains {_quoted(danger)}")
-    session = _phrases(tokens, vocabulary.session_phrases)
-    if session:
-        return _assess(RiskLevel.CAUTION, f"changes the session: {_quoted(session)}")
-    if signals.form_submit and signals.form_has_password:
-        return _assess(RiskLevel.CAUTION, "submits a form holding a password (a sign-in)")
-    read = sorted(set(tokens) & vocabulary.read_words)
+    authentication = authentication_reason(signals, vocabulary)
+    if authentication is not None:
+        return _assess(RiskLevel.CAUTION, authentication)
+    read = sorted(set(tokenize(signals.name or "")) & vocabulary.read_words)
     if read:
         return _assess(RiskLevel.SAFE, f"reads only: {_quoted(read)}")
     if signals.downloaded:
@@ -119,26 +116,48 @@ def classify_risk(signals: RiskSignals, vocabulary: RiskVocabulary) -> RiskAsses
     )
 
 
-def _danger_words(tokens: tuple[str, ...], vocabulary: RiskVocabulary) -> list[str]:
+def danger_words_in(name: str | None, vocabulary: RiskVocabulary) -> tuple[str, ...]:
+    """The danger words a control's name contains, sorted.
+
+    None when every danger word is a soft verb acting on view state ("Remove filter"). The
+    classifier and the healer both read danger through this one function.
+    """
+    tokens = tokenize(name or "")
     found = sorted(set(tokens) & vocabulary.danger_words)
     if not found:
-        return []
+        return ()
     softened = set(found) <= vocabulary.soft_verbs and bool(
         set(tokens) & vocabulary.view_state_nouns
     )
-    return [] if softened else found
+    return () if softened else tuple(found)
 
 
-def _phrases(tokens: tuple[str, ...], phrases: Iterable[str]) -> list[str]:
+def session_phrases_in(name: str | None, vocabulary: RiskVocabulary) -> tuple[str, ...]:
+    """The session phrases ("sign in", "log out", …) a control's name contains, sorted."""
+    tokens = tokenize(name or "")
     found: list[str] = []
-    for phrase in sorted(phrases):
+    for phrase in sorted(vocabulary.session_phrases):
         words = tokenize(phrase)
         width = len(words)
         if width and any(
             tokens[start : start + width] == words for start in range(len(tokens) - width + 1)
         ):
             found.append(phrase)
-    return found
+    return tuple(found)
+
+
+def authentication_reason(signals: RiskSignals, vocabulary: RiskVocabulary) -> str | None:
+    """Why a click or key changes the session, or None.
+
+    Signing in or out, or submitting a form that holds a password. The classifier calls these
+    steps CAUTION, and the healer allows them a single heal attempt, from this one reading.
+    """
+    session = session_phrases_in(signals.name, vocabulary)
+    if session:
+        return f"changes the session: {_quoted(session)}"
+    if signals.form_submit and signals.form_has_password:
+        return "submits a form holding a password (a sign-in)"
+    return None
 
 
 def _quoted(words: Iterable[str]) -> str:

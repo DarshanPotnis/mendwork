@@ -14,10 +14,10 @@ from mendwork.engine.domain.enums import ActionType
 from mendwork.engine.domain.recording import DraftStep, IgnoredReason
 from mendwork.engine.errors import TargetNotActionable, TargetNotFound
 from mendwork.engine.ports.browser_types import DownloadObservation, ElementRef, WatchKind
+from mendwork.engine.ports.element_types import ElementFacts
 from mendwork.engine.ports.recording import element_key
 from mendwork.engine.ports.recording_types import (
     ClickCapture,
-    ElementFacts,
     PageObservation,
     PressCapture,
     PressKey,

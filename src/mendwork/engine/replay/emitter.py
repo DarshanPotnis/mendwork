@@ -10,13 +10,17 @@ from mendwork.engine.domain.events import (
     ActionPerformedEvent,
     CheckpointFailedEvent,
     CheckpointPassedEvent,
+    HealAttemptedEvent,
+    HealVerifiedEvent,
     RunFinishedEvent,
     RunStartedEvent,
+    StateRestoredEvent,
     StepFailedEvent,
     StepStartedEvent,
     StepSucceededEvent,
     TargetResolvedEvent,
 )
+from mendwork.engine.domain.heals import HealAttemptReport, RecoveryReport
 from mendwork.engine.domain.identifiers import StepId
 from mendwork.engine.domain.runs import (
     CheckpointResult,
@@ -24,9 +28,9 @@ from mendwork.engine.domain.runs import (
     Run,
     RunId,
     StepResult,
-    TargetEvidence,
 )
 from mendwork.engine.domain.steps import Step
+from mendwork.engine.domain.targets import TargetEvidence
 from mendwork.engine.domain.workflow import WorkflowVersion
 from mendwork.engine.ports.clock import Clock
 from mendwork.engine.ports.events import EventSink
@@ -88,6 +92,56 @@ class RunEmitter:
             )
         )
 
+    async def heal_attempted(self, index: int, step_id: StepId, report: HealAttemptReport) -> None:
+        """One rung of the heal ladder decided."""
+        await self._sink.emit(
+            HealAttemptedEvent(
+                run_id=self._run_id,
+                sequence=self._next(),
+                at=self._clock.now(),
+                step_id=step_id,
+                index=index,
+                report=report,
+            )
+        )
+
+    async def heal_verified(
+        self,
+        index: int,
+        step_id: StepId,
+        report: HealAttemptReport,
+        failed_checkpoint: CheckpointResult | None,
+    ) -> None:
+        """The checkpoints after acting on a healed target proved or refuted the heal."""
+        if report.rung == 0:
+            raise ValueError("only a heal from Rung 1 or Rung 2 is verified")
+        await self._sink.emit(
+            HealVerifiedEvent(
+                run_id=self._run_id,
+                sequence=self._next(),
+                at=self._clock.now(),
+                step_id=step_id,
+                index=index,
+                rung=report.rung,
+                attempt=report.attempt,
+                passed=failed_checkpoint is None,
+                failed_checkpoint=failed_checkpoint,
+            )
+        )
+
+    async def state_restored(self, index: int, step_id: StepId, recovery: RecoveryReport) -> None:
+        """A restore after a failed heal finished, successfully or not."""
+        await self._sink.emit(
+            StateRestoredEvent(
+                run_id=self._run_id,
+                sequence=self._next(),
+                at=self._clock.now(),
+                step_id=step_id,
+                index=index,
+                recovery=recovery,
+            )
+        )
+
     async def action_performed(
         self,
         index: int,
@@ -136,7 +190,7 @@ class RunEmitter:
         )
 
     async def step_failed(self, result: StepResult) -> None:
-        """A step failed."""
+        """A step did not succeed: it failed, or stopped for a person."""
         if result.error is None:
             raise ValueError("a failed step result must carry its error")
         await self._sink.emit(
@@ -146,6 +200,7 @@ class RunEmitter:
                 at=self._clock.now(),
                 step_id=result.step_id,
                 index=result.index,
+                status=result.status,
                 duration_ms=result.duration_ms or 0,
                 action_performed=result.action_performed,
                 error=result.error,

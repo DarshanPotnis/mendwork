@@ -9,14 +9,27 @@ from typing import TextIO
 
 from pydantic import JsonValue
 
+from mendwork.apps.cli.heal_output import (
+    DIFFERENCE_WORDS,
+    INDENT,
+    attempt_lines,
+    next_step,
+    resolution_line,
+    restored_lines,
+    stop_headline,
+    verified_lines,
+)
 from mendwork.engine.domain.enums import ActionType, ValueKind
 from mendwork.engine.domain.events import (
     ActionPerformedEvent,
     CheckpointFailedEvent,
     CheckpointPassedEvent,
+    HealAttemptedEvent,
+    HealVerifiedEvent,
     RunEvent,
     RunFinishedEvent,
     RunStartedEvent,
+    StateRestoredEvent,
     StepFailedEvent,
     StepStartedEvent,
     StepSucceededEvent,
@@ -26,21 +39,22 @@ from mendwork.engine.domain.runs import (
     ErrorReport,
     Run,
     RunStatus,
-    SelectorOutcome,
     StepResult,
     StepStatus,
-    TargetEvidence,
     TraceWithheld,
     TraceWithheldReason,
 )
+from mendwork.engine.domain.targets import SelectorOutcome, TargetEvidence
 
-INDENT = "      "
-_DIFFERENCE_WORDS = {
-    "role": "role",
-    "tag": "tag",
-    "input_type": "type",
-    "accessible_name": "accessible name",
-    "unconfirmed": "identity not confirmed by Playwright",
+_STOPPED_WORDS = {
+    RunStatus.AWAITING_APPROVAL: "AWAITING APPROVAL",
+    RunStatus.NEEDS_REVIEW: "NEEDS REVIEW",
+}
+_RESULT_WORDS = {
+    StepStatus.SUCCEEDED: "succeeded",
+    StepStatus.FAILED: "FAILED",
+    StepStatus.AWAITING_APPROVAL: "AWAITING APPROVAL",
+    StepStatus.NEEDS_REVIEW: "NEEDS REVIEW",
 }
 
 
@@ -72,6 +86,12 @@ class HumanProgress:
                 return [f"[{event.index + 1}/{self._step_count}] {event.step_id} · {event.action}"]
             case TargetResolvedEvent():
                 return [INDENT + describe_resolution(event.evidence)]
+            case HealAttemptedEvent():
+                return attempt_lines(event.report)
+            case HealVerifiedEvent():
+                return verified_lines(event)
+            case StateRestoredEvent():
+                return restored_lines(event)
             case ActionPerformedEvent():
                 return _action_lines(event)
             case CheckpointPassedEvent():
@@ -89,7 +109,10 @@ class HumanProgress:
 
 
 def describe_resolution(evidence: TargetEvidence) -> str:
-    """One line on how Rung 0 found a target."""
+    """One line on how Rung 0 found a target, or which rung healed it."""
+    healed = resolution_line(evidence)
+    if healed is not None:
+        return healed
     total = len(evidence.selectors)
     hits = [report for report in evidence.selectors if report.outcome is SelectorOutcome.HIT]
     if evidence.resolved_rank is None:
@@ -117,7 +140,7 @@ def failure_lines(
     error: ErrorReport, target: TargetEvidence | None, action_performed: bool
 ) -> list[str]:
     """Why a step failed, with the evidence that matters for its kind of failure."""
-    lines = [f"{INDENT}FAILED {error.type}: {error.message}"]
+    lines = [INDENT + stop_headline(error)]
     context = error.context
     recorded = _identity(context.get("recorded"))
     found = _identity(context.get("found"))
@@ -126,7 +149,7 @@ def failure_lines(
         lines.append(f"{INDENT}  found     {found}")
         differences = context.get("differences")
         if isinstance(differences, list) and differences:
-            words = ", ".join(_DIFFERENCE_WORDS.get(str(item), str(item)) for item in differences)
+            words = ", ".join(DIFFERENCE_WORDS.get(str(item), str(item)) for item in differences)
             lines.append(f"{INDENT}  differs   {words}")
     if target is not None and error.type in {"AmbiguousTarget", "TargetNotFound"}:
         lines.extend(_selector_lines(target))
@@ -134,6 +157,9 @@ def failure_lines(
         lines.append(f"{INDENT}The action was performed before the step failed.")
     else:
         lines.append(f"{INDENT}No action was performed on this step.")
+    guidance = next_step(error)
+    if guidance is not None:
+        lines.append(INDENT + guidance)
     return lines
 
 
@@ -194,7 +220,8 @@ def _row(step: StepResult) -> tuple[str, str, str, str, str, str, str]:
     total = len(step.checkpoints)
     checks = f"{passed}/{total}" if total else "-"
     seconds = f"{(step.duration_ms or 0) / 1000:.2f}s"
-    result = "succeeded" if step.status is StepStatus.SUCCEEDED else "FAILED"
+    abstained = step.error is not None and step.error.type == "HealAbstained"
+    result = "ABSTAINED" if abstained else _RESULT_WORDS.get(step.status, step.status.value)
     return (
         str(step.index + 1),
         step.step_id,
@@ -209,6 +236,14 @@ def _row(step: StepResult) -> tuple[str, str, str, str, str, str, str]:
 def _target_cell(step: StepResult) -> str:
     target = step.target
     error_type = step.error.type if step.error is not None else None
+    heal = step.heal
+    if heal is not None:
+        if heal.healed_rung is not None:
+            return f"healed r{heal.healed_rung}"
+        if heal.proposal is not None:
+            return "proposal"
+        if heal.abstention is not None:
+            return "abstained"
     if target is None:
         return "-"
     if error_type == "TargetDrifted" and target.resolved_rank is not None:
@@ -242,8 +277,11 @@ def _outcome(run: Run, run_directory: Path) -> list[str]:
         return [
             f"FAILED before any step could finish: {reason} · {succeeded}/{total} steps succeeded"
         ]
+    stopped = _STOPPED_WORDS.get(run.status, "FAILED")
+    if error is not None and error.type == "HealAbstained":
+        stopped = "ABSTAINED"
     lines = [
-        f"FAILED at step {failed.index + 1} {failed.step_id}: "
+        f"{stopped} at step {failed.index + 1} {failed.step_id}: "
         f"{error.type if error is not None else 'error'} · "
         f"{succeeded}/{total} steps succeeded in {seconds}"
     ]

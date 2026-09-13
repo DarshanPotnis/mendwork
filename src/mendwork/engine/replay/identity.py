@@ -1,14 +1,14 @@
 """The Rung 0 identity check: is the element the selectors found the one that was recorded?
 
 A selector surviving a release is not proof the control did: ids and test ids routinely
-outlive a relabel, which is how "Download CSV" becomes "Delete data" under the same
+outlive a relabel, which is how "Export ledger" becomes "Delete ledger" under the same
 ``data-testid``. So the found element's identity is compared with the fingerprint:
 
 - with a recorded role: role and accessible name;
 - without one (password and date inputs have no ARIA role): tag, type, and name.
 
 Names are compared after Unicode NFKC normalization, case folding, and whitespace
-collapsing, so "Download  CSV" and "download csv" are the same name. An identity the page
+collapsing, so "Export  ledger" and "export ledger" are the same name. An identity the page
 computed but Playwright could not confirm also counts as different. Any difference is a
 drifted match, which Phase 3 never acts on.
 """
@@ -18,7 +18,7 @@ from enum import StrEnum
 from typing import Final
 
 from mendwork.engine.domain.fingerprint import Fingerprint
-from mendwork.engine.domain.runs import IdentityReport
+from mendwork.engine.domain.targets import IdentityReport
 from mendwork.engine.ports.browser_types import ElementIdentity
 
 # HTML's defaults when the type attribute is absent.

@@ -14,7 +14,6 @@ from mendwork.engine.ports.browser_types import ElementRef, WatchId
 from mendwork.engine.ports.recording_types import (
     AncestorFacts,
     CaptureRef,
-    ElementFacts,
     FieldText,
     NavigationRecord,
     PageEvent,
@@ -60,13 +59,6 @@ class RecordingBrowser(BrowserPort, Protocol):
 
     async def finish_capture(self, ref: CaptureRef) -> None:
         """Release the page: the capture is recorded, ignored, or abandoned."""
-        ...
-
-    async def element_facts(self, element: ElementRef) -> ElementFacts:
-        """Facts about a pinned element, never including a field's content.
-
-        Raises TargetNotFound if the element's document was replaced.
-        """
         ...
 
     async def scope_ancestors(

@@ -5,7 +5,7 @@ substring) > label > placeholder > text > css. Nothing here decides that a candi
 the recorder keeps only those that find exactly the recorded element in the browser.
 
 The own-text candidate exists for repeated controls whose names differ only by text meant
-for screen readers ("View" plus a hidden " order PO-1042"). Its short text matches every
+for screen readers ("Open" plus a hidden " invoice INV-2231"). Its short text matches every
 row's control, which is what makes the recorder scope it to the one row.
 """
 
@@ -26,7 +26,8 @@ from mendwork.engine.domain.selectors import (
     Selector,
 )
 from mendwork.engine.ports.browser_types import ElementIdentity
-from mendwork.engine.ports.recording_types import AncestorFacts, ElementFacts
+from mendwork.engine.ports.element_types import ElementFacts
+from mendwork.engine.ports.recording_types import AncestorFacts
 
 SELECTOR: Final[TypeAdapter[Selector]] = TypeAdapter(Selector)
 TEXT_SELECTOR_MAX_LENGTH: Final = 128

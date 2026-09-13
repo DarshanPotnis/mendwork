@@ -1,7 +1,7 @@
 """Words for recorded steps: descriptions, intents, and step ids, all without AI.
 
-A description is what a person checks in the summary ("CLICK the 'Download CSV' button");
-an intent is what the workflow file says the step is for ("Click the 'Download CSV'
+A description is what a person checks in the summary ("CLICK the 'Export ledger' button");
+an intent is what the workflow file says the step is for ("Click the 'Export ledger'
 button"). Step ids are slugs built from the same words, unique within the recording.
 """
 
@@ -62,7 +62,7 @@ def role_word(role: str | None, tag: str) -> str:
 
 
 def target_phrase(role: str | None, name: str | None, tag: str) -> str:
-    """The target in words: "the 'Download CSV' button", or "the unnamed button"."""
+    """The target in words: "the 'Export ledger' button", or "the unnamed button"."""
     word = role_word(role, tag)
     if not name:
         return f"the unnamed {word}"

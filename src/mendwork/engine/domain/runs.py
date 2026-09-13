@@ -17,13 +17,15 @@ from typing import Annotated, Final, Literal, NewType
 from pydantic import Field, JsonValue, StringConstraints
 
 from mendwork.engine.domain.base import DomainModel
-from mendwork.engine.domain.enums import ActionType, CheckpointKind, SelectorStrategy
+from mendwork.engine.domain.enums import ActionType, CheckpointKind
+from mendwork.engine.domain.heals import HealReport
 from mendwork.engine.domain.identifiers import (
     SecretNameField,
     StepIdField,
     VersionNumber,
     WorkflowIdField,
 )
+from mendwork.engine.domain.targets import TargetEvidence
 
 _RUN_ID: Final = r"\d{8}T\d{6}Z-[0-9a-f]{8}"
 _ARTIFACT_SEGMENT: Final = r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}"
@@ -64,11 +66,15 @@ def parse_artifact_name(value: str) -> ArtifactName:
 
 
 class RunStatus(StrEnum):
-    """Where a run is in its lifecycle. Later phases add the waiting and review states."""
+    """Where a run is in its lifecycle. Cancellation arrives in Phase 7."""
 
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    AWAITING_APPROVAL = "awaiting_approval"
+    """A heal was found for an irreversible step; nothing acts on it without approval."""
+    NEEDS_REVIEW = "needs_review"
+    """An irreversible action ran and could not be verified; a person must check it."""
 
 
 class StepStatus(StrEnum):
@@ -76,7 +82,15 @@ class StepStatus(StrEnum):
 
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+    AWAITING_APPROVAL = "awaiting_approval"
+    NEEDS_REVIEW = "needs_review"
     NOT_RUN = "not_run"
+
+
+STOPPING_STATUSES: Final = frozenset(
+    {StepStatus.FAILED, StepStatus.AWAITING_APPROVAL, StepStatus.NEEDS_REVIEW}
+)
+"""A step that ends in one of these stops the run."""
 
 
 class ErrorCategory(StrEnum):
@@ -86,17 +100,6 @@ class ErrorCategory(StrEnum):
     INFRASTRUCTURE = "infrastructure"
 
 
-class SelectorOutcome(StrEnum):
-    """What one ranked selector found at Rung 0."""
-
-    HIT = "hit"
-    """Exactly one visible element at every scope level."""
-    NONE = "none"
-    """Some level matched no visible element."""
-    MANY = "many"
-    """Some level matched several visible elements."""
-
-
 class TraceWithheldReason(StrEnum):
     """Why a failure's trace was not saved."""
 
@@ -104,44 +107,6 @@ class TraceWithheldReason(StrEnum):
     """The failing page still held a value typed from a secret, so its trace could contain it."""
     SECRET_DETECTED = "secret_detected"  # noqa: S105 - a reason code, not a credential
     """The trace was scanned, found to contain a secret value, and deleted."""
-
-
-class SelectorReport(DomainModel):
-    """One recorded selector's result at Rung 0."""
-
-    rank: int = Field(ge=0)
-    strategy: SelectorStrategy
-    level_counts: tuple[int, ...]
-    """Visible matches per scope level, outermost first, stopping at the first level that
-    did not match exactly one element."""
-    outcome: SelectorOutcome
-    element: int | None = None
-    """For a hit, which distinct element it found, numbered in order of first appearance."""
-
-
-class IdentityReport(DomainModel):
-    """An element's identity as the page reported it."""
-
-    tag: str
-    input_type: str | None = None
-    role: str | None = None
-    name: str
-    confirmed: bool | None = None
-    """Whether Playwright's own role locator agrees; None when there is no role to confirm."""
-
-
-class TargetEvidence(DomainModel):
-    """Everything Rung 0 observed while resolving a step's target."""
-
-    selectors: tuple[SelectorReport, ...]
-    resolved_rank: int | None = None
-    """The best-ranked selector that hit, when the hits agreed."""
-    identity: IdentityReport | None = None
-    """The identity of the element the hits agreed on."""
-    elements: tuple[IdentityReport, ...] = ()
-    """One identity per distinct element, when the hits disagreed."""
-    differences: tuple[str, ...] = ()
-    """How the found identity differs from the recorded one, for a drifted match."""
 
 
 class CheckpointResult(DomainModel):
@@ -209,6 +174,8 @@ class StepResult(DomainModel):
     checkpoints: tuple[CheckpointResult, ...] = ()
     error: ErrorReport | None = None
     artifacts: StepArtifacts = StepArtifacts()
+    heal: HealReport | None = None
+    """What the heal ladder did, when the recorded selectors could not safely proceed."""
 
 
 class Run(DomainModel):
@@ -226,10 +193,11 @@ class Run(DomainModel):
     """Run inputs, including defaults applied. Secrets are listed by name only."""
     secrets: tuple[SecretNameField, ...] = ()
     steps: tuple[StepResult, ...] = ()
-    """One result per step of the workflow, in order; steps after a failure are not_run."""
+    """One result per step of the workflow, in order; steps after the one the run stopped at
+    are not_run."""
     error: ErrorReport | None = None
 
     @property
     def failed_step(self) -> StepResult | None:
-        """The step the run stopped at, if it failed at one."""
-        return next((step for step in self.steps if step.status is StepStatus.FAILED), None)
+        """The step the run stopped at: failed, awaiting approval, or needing review."""
+        return next((step for step in self.steps if step.status in STOPPING_STATUSES), None)

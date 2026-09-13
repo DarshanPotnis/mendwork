@@ -24,6 +24,8 @@ from mendwork.adapters.secrets_env.naming import (
     is_secret_namespace,
     is_valid_secret_variable,
 )
+from mendwork.engine.domain.heals import FeatureName
+from mendwork.engine.healing.config import acceptance_problems
 from mendwork.engine.safety.redaction import DEFAULT_SENSITIVE_KEY_FRAGMENTS
 
 ENV_PREFIX: Final = "MENDWORK_"
@@ -251,6 +253,42 @@ class Settings(BaseSettings):
     risk_read_words: frozenset[str] = DEFAULT_READ_WORDS
     risk_session_phrases: frozenset[str] = DEFAULT_SESSION_PHRASES
 
+    # Healing (ARCHITECTURE.md §7, ADR 0009). Rung 2 scores a live element as a weighted sum of
+    # eight features; the weights sum to 1. The defaults follow from invariants, not from tuning
+    # on any site, and the validator enforces the two that keep healing safe: role, tag/type,
+    # nearby text, structural path, and position together stay below the accept threshold, and
+    # the margin exceeds every nearby-text, structural-path, and position weight.
+    heal_weight_name: float = Field(default=0.25, ge=0.0, le=1.0)
+    heal_weight_label: float = Field(default=0.05, ge=0.0, le=1.0)
+    heal_weight_attributes: float = Field(default=0.25, ge=0.0, le=1.0)
+    heal_weight_role: float = Field(default=0.10, ge=0.0, le=1.0)
+    heal_weight_tag_type: float = Field(default=0.05, ge=0.0, le=1.0)
+    heal_weight_nearby_text: float = Field(default=0.10, ge=0.0, le=1.0)
+    heal_weight_structural_path: float = Field(default=0.10, ge=0.0, le=1.0)
+    heal_weight_position: float = Field(default=0.10, ge=0.0, le=1.0)
+    # A candidate that lost one whole group of clues (its wording, say) still reaches 0.70;
+    # one with neither wording nor identity attributes tops out at 0.45.
+    heal_accept_threshold: float = Field(default=0.60, gt=0.0, le=1.0)
+    # Above the largest single layout weight (0.10), below any identity group (0.15 to 0.30).
+    heal_accept_margin: float = Field(default=0.15, gt=0.0, lt=1.0)
+    # Unrelated labels agree by chance up to about 0.4; agreement at or below this is none.
+    heal_name_similarity_floor: float = Field(default=0.5, ge=0.0, lt=1.0)
+    # Position proximity reaches 0 at this distance, as a fraction of the document.
+    heal_position_scale: float = Field(default=0.25, gt=0.0, le=2.0)
+    # A page with more action-compatible visible elements than this is never healed: scoring
+    # part of a page cannot prove the margin, so this is a capability limit, not only a
+    # performance knob. Measured (ADR 0009): a large Wikipedia table has 1,769 candidates and a
+    # scan costs about 2.6 ms each; 4,000 is 2.3x that page and scans twice within heal_timeout_ms.
+    heal_candidates_max: int = Field(default=4_000, ge=1, le=100_000)
+    # Healed targets one step may act on, counting those that fail verification.
+    heal_max_attempts: int = Field(default=2, ge=1, le=5)
+    # Authentication steps: repeated attempts can lock the account (ADR 0006).
+    heal_authentication_max_attempts: int = Field(default=1, ge=0, le=1)
+    # How many of the best candidates each heal attempt reports.
+    heal_report_candidates: int = Field(default=5, ge=1, le=20)
+    # All healing for one step, attempts and restores included.
+    heal_timeout_ms: int = Field(default=30_000, ge=1, le=_MAX_TIMEOUT_MS)
+
     @classmethod
     def settings_customise_sources(
         cls,
@@ -286,6 +324,28 @@ class Settings(BaseSettings):
     def _retry_delays_are_ordered(self) -> Self:
         if self.retry_max_delay_ms < self.retry_initial_delay_ms:
             raise ValueError("retry_max_delay_ms must not be less than retry_initial_delay_ms")
+        return self
+
+    def heal_weights(self) -> dict[FeatureName, float]:
+        """The heal feature weights, keyed by feature."""
+        return {
+            FeatureName.NAME: self.heal_weight_name,
+            FeatureName.LABEL: self.heal_weight_label,
+            FeatureName.ATTRIBUTES: self.heal_weight_attributes,
+            FeatureName.ROLE: self.heal_weight_role,
+            FeatureName.TAG_TYPE: self.heal_weight_tag_type,
+            FeatureName.NEARBY_TEXT: self.heal_weight_nearby_text,
+            FeatureName.STRUCTURAL_PATH: self.heal_weight_structural_path,
+            FeatureName.POSITION: self.heal_weight_position,
+        }
+
+    @model_validator(mode="after")
+    def _heal_acceptance_is_safe(self) -> Self:
+        problems = acceptance_problems(
+            self.heal_weights(), self.heal_accept_threshold, self.heal_accept_margin
+        )
+        if problems:
+            raise ValueError("; ".join(problems))
         return self
 
     @model_validator(mode="after")

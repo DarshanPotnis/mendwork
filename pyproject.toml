@@ -13,6 +13,7 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "pyyaml>=6.0.2",
+    "rapidfuzz>=3.10",
     "structlog>=24.4",
     "typer>=0.12",
 ]
@@ -99,7 +100,7 @@ testpaths = ["tests"]
 addopts = ["--strict-markers", "--strict-config"]
 markers = [
     "browser: drives headless Chromium against the locally served chaos portal",
-    "slow: launches Chromium through the CLI or sweeps every heal pair; excluded from make check, run by make check-all and CI",
+    "slow: CLI browser runs, pair sweeps, portal replays, the heal fixture suite, recordings, and portal determinism; excluded from make check, run by make check-all and CI",
 ]
 filterwarnings = ["error"]
 xfail_strict = true

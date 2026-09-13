@@ -43,7 +43,8 @@ define coverage_gates
 endef
 
 # Everything except tests marked slow: CLI runs that launch their own Chromium, the full heal
-# pair sweep, the in-process portal replays, and recordings in Chromium.
+# pair sweep, the in-process portal replays, the heal fixture suite, recordings in Chromium, and
+# the chaos portal's determinism checks.
 test:
 	$(UV) run pytest -m "not slow" --cov --cov-report=term-missing:skip-covered
 	$(call coverage_gates,$(FAST_SUITE),97,98,90)

@@ -16,27 +16,26 @@ from mendwork.adapters.browser_playwright.errors import (
     is_context_destroyed,
     page_read_error,
 )
+from mendwork.adapters.browser_playwright.facts import FACTS_REQUEST, FactsReply
 from mendwork.adapters.browser_playwright.identity import read_identity
 from mendwork.adapters.browser_playwright.observations import Observations
 from mendwork.adapters.browser_playwright.recording.channel import RecorderChannel
 from mendwork.adapters.browser_playwright.recording.messages import (
     SCOPE_REPLIES,
     ControlReply,
-    FactsReply,
     FieldTextReply,
 )
 from mendwork.adapters.browser_playwright.recording.navigation_log import NavigationLog
 from mendwork.adapters.browser_playwright.scripts import PageScripts
 from mendwork.adapters.browser_playwright.session import PlaywrightSession
 from mendwork.adapters.browser_playwright.tracing import TraceRecorder
-from mendwork.engine.domain.limits import NEARBY_TEXT_MAX_ITEMS
 from mendwork.engine.errors import TargetNotFound
 from mendwork.engine.ports.browser_types import ElementIdentity, ElementRef, WatchId
+from mendwork.engine.ports.element_types import ElementFacts
 from mendwork.engine.ports.recording import StopSignal
 from mendwork.engine.ports.recording_types import (
     AncestorFacts,
     CaptureRef,
-    ElementFacts,
     FieldText,
     Landmark,
     NavigationRecord,
@@ -53,7 +52,6 @@ LANDMARK_CANDIDATES: Final = (
 LIVE_REGIONS: Final = (
     "css=[role=status], [role=alert], [role=log], [aria-live]:not([aria-live=off]), output"
 )
-STRUCTURAL_PATH_MAX_LEVELS: Final = 12
 _OBSERVE_ATTEMPTS: Final = 3
 
 
@@ -123,7 +121,7 @@ class PlaywrightRecordingSession(PlaywrightSession):
         raw = await self._evaluate_on(
             element,
             self._scripts.element_facts,
-            {"nearbyMax": NEARBY_TEXT_MAX_ITEMS, "pathMax": STRUCTURAL_PATH_MAX_LEVELS},
+            FACTS_REQUEST,
         )
         self._channel.observe("element_facts", raw)
         return FactsReply.model_validate(raw).facts()

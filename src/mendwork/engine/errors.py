@@ -91,7 +91,27 @@ class TargetDrifted(MendworkError):
 
     Its role, tag, type, or accessible name differs from the fingerprint, or Playwright
     could not confirm the identity that was computed. Acting on it could do something
-    other than what the step intends ("Download CSV" relabelled "Delete data").
+    other than what the step intends ("Export ledger" relabelled "Delete ledger").
+    """
+
+
+class HealAbstained(MendworkError):
+    """The heal ladder examined the page and found nothing it could safely act on.
+
+    Abstaining is a correct outcome, not a malfunction: acting on a guess could click the
+    wrong control. ``reason`` names why (below the threshold, too close to a look-alike,
+    refused by a safety rule, no checkpoint to verify with, and so on).
+    """
+
+
+class ApprovalRequired(MendworkError):
+    """A heal was found for an irreversible step, which never acts on a heal without approval."""
+
+
+class NeedsReview(MendworkError):
+    """An irreversible action ran on a healed target and its checkpoints did not pass.
+
+    It is never retried: repeating it could pay, send, or delete twice.
     """
 
 

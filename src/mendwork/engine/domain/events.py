@@ -12,6 +12,7 @@ from pydantic import Field
 
 from mendwork.engine.domain.base import DomainModel
 from mendwork.engine.domain.enums import ActionType, RiskLevel, ValueKind
+from mendwork.engine.domain.heals import HealAttemptReport, RecoveryReport
 from mendwork.engine.domain.identifiers import StepIdField, VersionNumber, WorkflowIdField
 from mendwork.engine.domain.runs import (
     CheckpointResult,
@@ -20,8 +21,9 @@ from mendwork.engine.domain.runs import (
     RunIdField,
     RunStatus,
     StepArtifacts,
-    TargetEvidence,
+    StepStatus,
 )
+from mendwork.engine.domain.targets import TargetEvidence
 
 
 class _RunEvent(DomainModel):
@@ -57,10 +59,34 @@ class StepStartedEvent(_StepEvent):
 
 
 class TargetResolvedEvent(_StepEvent):
-    """Rung 0 found the step's target and verified its identity."""
+    """The step's target was found: by Rung 0 with a verified identity, or by an accepted heal."""
 
     type: Literal["target_resolved"] = "target_resolved"
     evidence: TargetEvidence
+
+
+class HealAttemptedEvent(_StepEvent):
+    """One rung of the heal ladder decided, before anything acts on its decision."""
+
+    type: Literal["heal_attempted"] = "heal_attempted"
+    report: HealAttemptReport
+
+
+class HealVerifiedEvent(_StepEvent):
+    """The checkpoints ran after acting on a healed target: the heal is proven or refuted."""
+
+    type: Literal["heal_verified"] = "heal_verified"
+    rung: Literal[1, 2]
+    attempt: int = Field(ge=1)
+    passed: bool
+    failed_checkpoint: CheckpointResult | None = None
+
+
+class StateRestoredEvent(_StepEvent):
+    """After a heal failed verification, the page was put back to its last known-good state."""
+
+    type: Literal["state_restored"] = "state_restored"
+    recovery: RecoveryReport
 
 
 class ActionPerformedEvent(_StepEvent):
@@ -95,9 +121,11 @@ class StepSucceededEvent(_StepEvent):
 
 
 class StepFailedEvent(_StepEvent):
-    """A step failed; the run stops here."""
+    """A step did not succeed; the run stops here."""
 
     type: Literal["step_failed"] = "step_failed"
+    status: StepStatus = StepStatus.FAILED
+    """Failed, or stopped for a person: awaiting approval or needing review."""
     duration_ms: int = Field(ge=0)
     action_performed: bool
     error: ErrorReport
@@ -119,6 +147,9 @@ RunEvent = Annotated[
     RunStartedEvent
     | StepStartedEvent
     | TargetResolvedEvent
+    | HealAttemptedEvent
+    | HealVerifiedEvent
+    | StateRestoredEvent
     | ActionPerformedEvent
     | CheckpointPassedEvent
     | CheckpointFailedEvent

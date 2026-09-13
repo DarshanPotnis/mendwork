@@ -27,6 +27,7 @@ class PageScripts:
     element_ancestors: str
     scope_facts: str
     field_text: str
+    extract_candidates: str
 
     @classmethod
     def load(cls) -> "PageScripts":
@@ -48,4 +49,5 @@ class PageScripts:
             element_ancestors=read("element_ancestors"),
             scope_facts=read("scope_facts"),
             field_text=read("field_text"),
+            extract_candidates=read("extract_candidates"),
         )

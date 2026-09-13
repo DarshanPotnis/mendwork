@@ -57,12 +57,13 @@ class EvidenceRecorder:
         self._secret_typed_at: tuple[int, StepId] | None = None
         self._downloads: set[str] = set()
 
-    def secret_typed(self, index: int, step_id: StepId, selector: Selector) -> None:
-        """Note that a step typed a secret into the field this selector found.
+    def secret_typed(self, index: int, step_id: StepId, selector: Selector | None) -> None:
+        """Note that a step typed a secret into the field this selector finds.
 
-        Every later screenshot masks that field, and a withheld trace names this step.
+        Every later screenshot masks that field, and a withheld trace names this step. Password
+        inputs are always masked by the browser adapter, whatever the selector.
         """
-        if selector not in self._masks:
+        if selector is not None and selector not in self._masks:
             self._masks.append(selector)
         self._secret_typed_at = (index, step_id)
 

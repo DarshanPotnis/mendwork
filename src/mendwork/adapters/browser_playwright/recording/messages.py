@@ -14,10 +14,8 @@ from mendwork.engine.domain.recording import IgnoredReason
 from mendwork.engine.ports.browser_types import ElementIdentity
 from mendwork.engine.ports.recording_types import (
     AncestorFacts,
-    Box,
     CaptureRef,
     ClickCapture,
-    ElementFacts,
     FieldText,
     FieldValue,
     FillCapture,
@@ -112,64 +110,6 @@ class _Reply(_Strict):
         alias_generator=to_camel,
         populate_by_name=True,
     )
-
-
-class BoxReply(_Reply):
-    x: float
-    y: float
-    width: float
-    height: float
-
-
-class FactsReply(_Reply):
-    """What element_facts.js returns."""
-
-    tag: str
-    id: str | None
-    name: str | None
-    type: str | None
-    autocomplete: str | None
-    placeholder: str | None
-    aria_label: str | None
-    test_id: str | None
-    href: str | None
-    label_text: str | None
-    text: str | None
-    own_text: str | None
-    nearby_text: list[str]
-    structural_path: str
-    box: BoxReply | None
-    text_entry: bool
-    masked: bool
-    in_form: bool
-    form_submit: bool
-    form_has_password: bool
-
-    def facts(self) -> ElementFacts:
-        """The engine's element facts."""
-        box = self.box
-        return ElementFacts(
-            tag=self.tag,
-            id=self.id,
-            name=self.name,
-            type=self.type,
-            autocomplete=self.autocomplete,
-            placeholder=self.placeholder,
-            aria_label=self.aria_label,
-            data_testid=self.test_id,
-            href=self.href,
-            label_text=self.label_text,
-            text=self.text,
-            own_text=self.own_text,
-            nearby_text=tuple(self.nearby_text),
-            structural_path=self.structural_path,
-            box=None if box is None else Box(x=box.x, y=box.y, width=box.width, height=box.height),
-            text_entry=self.text_entry,
-            masked=self.masked,
-            in_form=self.in_form,
-            form_submit=self.form_submit,
-            form_has_password=self.form_has_password,
-        )
 
 
 class ScopeReply(_Reply):

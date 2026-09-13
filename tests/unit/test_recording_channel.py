@@ -10,10 +10,10 @@ from typing import cast
 import pytest
 from playwright.async_api import Page
 
+from mendwork.adapters.browser_playwright.facts import FactsReply
 from mendwork.adapters.browser_playwright.recording.channel import LoggingInbound, RecorderChannel
 from mendwork.adapters.browser_playwright.recording.messages import (
     PAGE_MESSAGE,
-    FactsReply,
     FieldTextReply,
     ScopeReply,
     to_event,

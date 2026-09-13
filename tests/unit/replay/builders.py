@@ -6,11 +6,42 @@ from mendwork.engine.domain.enums import AriaRole
 from mendwork.engine.domain.fingerprint import Fingerprint, FingerprintAttributes
 from mendwork.engine.domain.selectors import Selector
 from mendwork.engine.errors import MendworkError
+from mendwork.engine.healing.config import FeatureWeights, HealingConfig
 from mendwork.engine.replay.config import ReplayConfig, RetryPolicy
 from tests.fakes.browser import Effect, FakeBrowser, FakeElement
 from tests.fakes.timer import FakeTimer
+from tests.unit.recording.builders import VOCABULARY
 
 SELECTOR: TypeAdapter[Selector] = TypeAdapter(Selector)
+
+WEIGHTS = FeatureWeights(
+    name=0.25,
+    label=0.05,
+    attributes=0.25,
+    role=0.10,
+    tag_type=0.05,
+    nearby_text=0.10,
+    structural_path=0.10,
+    position=0.10,
+)
+
+
+def healing(**overrides: object) -> HealingConfig:
+    """The heal ladder's configuration, with Settings' defaults unless overridden."""
+    values: dict[str, object] = {
+        "weights": WEIGHTS,
+        "accept_threshold": 0.60,
+        "accept_margin": 0.15,
+        "name_similarity_floor": 0.5,
+        "position_scale": 0.25,
+        "candidates_max": 4_000,
+        "max_attempts": 2,
+        "authentication_max_attempts": 1,
+        "report_candidates": 5,
+        "timeout_ms": 30_000,
+        "vocabulary": VOCABULARY,
+    }
+    return HealingConfig.model_validate({**values, **overrides})
 
 
 def selector(**raw: object) -> Selector:
@@ -102,5 +133,6 @@ def config(**overrides: object) -> ReplayConfig:
             multiplier=2.0,
             jitter_ratio=0.5,
         ),
+        "healing": healing(),
     }
     return ReplayConfig.model_validate({**values, **overrides})

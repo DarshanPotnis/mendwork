@@ -145,6 +145,13 @@ pair, with a seed that makes `?seed=<seed>&only=<mutation>` apply exactly that p
     names it, the control still does its job, and swapped controls work from the keyboard.
 - **Scope:** `cookie_banner` has no target, so it is not in the table. Its test runs on
   every page instead.
+- **Abstain pairs:** `benchmarks/chaos/abstain_pairs.json` lists every (abstain_expected
+  mutation, primary target) pair the same way, written by the same `make chaos-pairs` run and
+  kept fresh by the same tests.
+- **Heal fixture suite:** Mendwork's heal ladder is measured against every pair whose target
+  an example workflow acts on (`benchmarks/chaos/heal_cases.py`, ADR 0009). Before every
+  action, test code asks `window.__chaos.locate` whether the element is the real target; a
+  wrong element, a recorded wrong action, or any action at an abstain step fails the suite.
 
 ## Safety and the benchmark rule
 

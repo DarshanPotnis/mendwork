@@ -4,7 +4,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from mendwork.engine.domain.runs import SelectorOutcome
+from mendwork.engine.domain.targets import SelectorOutcome
 from mendwork.engine.ports.browser_types import ElementRef, UniqueMatch
 from mendwork.engine.replay.consensus import (
     Agreement,

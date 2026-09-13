@@ -23,7 +23,7 @@ from mendwork.engine.errors import (
     TargetNotFound,
 )
 from mendwork.engine.ports.browser_types import ElementIdentity, ElementRef
-from mendwork.engine.ports.recording_types import ElementFacts
+from mendwork.engine.ports.element_types import ElementFacts
 from mendwork.engine.recording.context import CaptureContext
 from mendwork.engine.recording.failures import UnusableReason, unusable
 from mendwork.engine.recording.fingerprints import build_fingerprint

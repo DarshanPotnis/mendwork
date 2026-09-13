@@ -16,7 +16,7 @@ from pydantic import SecretStr
 from mendwork.engine.domain.checkpoints import ResponseReceived, UrlMatches
 from mendwork.engine.domain.runs import RunId
 from mendwork.engine.domain.selectors import Selector
-from mendwork.engine.errors import MendworkError
+from mendwork.engine.errors import MendworkError, TargetNotFound
 from mendwork.engine.ports.browser_types import (
     Actionability,
     DomEpoch,
@@ -37,6 +37,8 @@ from mendwork.engine.ports.browser_types import (
     WatchId,
     WatchKind,
 )
+from mendwork.engine.ports.candidate_types import CandidateQuery, CandidateScan, LiveCandidate
+from mendwork.engine.ports.element_types import ElementFacts
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 from tests.fakes.timer import FakeTimer
 
@@ -78,6 +80,13 @@ class FakeBrowser:
     elements: dict[str, FakeElement] = field(default_factory=dict)
     finds: dict[Selector, str | tuple[int, ...]] = field(default_factory=dict)
     """A selector's element key for a hit, or its level counts for a miss; absent is (0,)."""
+    facts: dict[str, ElementFacts] = field(default_factory=dict)
+    """The facts an element reports; an element without an entry reports only its tag."""
+    candidates: list[str] = field(default_factory=list)
+    """The element keys a candidate scan finds, in document order."""
+    detached: set[str] = field(default_factory=set)
+    """Elements whose facts can no longer be read."""
+    scans: list[CandidateQuery] = field(default_factory=list)
     url: str = "https://portal.example.test/"
     text: str = ""
     alerts: tuple[str, ...] = ()
@@ -176,10 +185,42 @@ class FakeBrowser:
         found = self.finds.get(selector, (0,))
         if isinstance(found, tuple):
             return UniqueMatch(level_counts=found)
-        ref = ElementRef(f"ref-{len(self._refs) + 1}")
-        self._refs[ref] = found
         depth = 1 + _scope_depth(selector)
-        return UniqueMatch(level_counts=(1,) * depth, element=ref)
+        return UniqueMatch(level_counts=(1,) * depth, element=self.pin(found))
+
+    def pin(self, key: str) -> ElementRef:
+        """A new ref to the element with this key, as the adapter pins a found node."""
+        ref = ElementRef(f"ref-{len(self._refs) + 1}")
+        self._refs[ref] = key
+        return ref
+
+    def key_of(self, ref: ElementRef) -> str:
+        """The element key a ref was pinned to."""
+        return self._refs[ref]
+
+    async def element_facts(self, element: ElementRef) -> ElementFacts:
+        key = self._refs[element]
+        if key in self.detached:
+            raise TargetNotFound("the element is no longer on the page", reason="detached")
+        found = self.facts.get(key)
+        if found is not None:
+            return found
+        tag = self.elements[key].tag
+        return ElementFacts(tag=tag, structural_path=f"main > {tag}")
+
+    async def scan_candidates(self, query: CandidateQuery) -> CandidateScan:
+        self.scans.append(query)
+        pinned: list[LiveCandidate] = []
+        for key in self.candidates[: query.limit]:
+            ref = self.pin(key)
+            pinned.append(
+                LiveCandidate(
+                    element=ref,
+                    identity=self.elements[key].identity(confirm=False),
+                    facts=await self.element_facts(ref),
+                )
+            )
+        return CandidateScan(candidates=tuple(pinned), total=len(self.candidates))
 
     async def group_identical(self, elements: Sequence[ElementRef]) -> tuple[int, ...]:
         keys = [self._refs[element] for element in elements]

@@ -1,10 +1,17 @@
-"""Find chaos seeds where download_report stops safely at Rung 0, and seeds where it succeeds.
+"""Survey chaos seeds: where download_report stops safely, succeeds, or heals, against ground truth.
 
-Each seed replays the example workflow with the same wiring as ``mendwork run``, against a
-running portal (``make portal``), at the given level. A separate browser context then reads
-``window.__chaos.applied`` on each page the workflow visits, for that seed and level:
-benchmark code may read the ground truth, Mendwork never does. A stop is attributed to the
-mutations applied to the failing step's own target.
+Each seed replays the complete example workflow with the same wiring as ``mendwork run``,
+against a running portal (``make portal``), at the given level. Every action is checked against
+``window.__chaos.locate`` at the moment it happens (the same wrapper the heal fixture suite
+uses), and the page's recorded wrong actions are read before the browser context closes. A
+separate browser context reads ``window.__chaos.applied`` on each page the workflow visits:
+benchmark code may read the ground truth, Mendwork never does.
+
+- A stop is attributed to the mutations applied to the failing step's own target.
+- A **wrong action** is an action on an element that is not the step's target, any action on a
+  target that received an abstain_expected mutation, or a wrong action the page recorded.
+- A **false success** is a wrong action whose step still passed its checkpoints: the worst
+  outcome, because nothing in the run's record would show it.
 
     uv run python -m benchmarks.chaos.rung0_seeds \
         --portal http://127.0.0.1:8765/ --level 3 --seeds 0-30
@@ -22,15 +29,11 @@ from typing import Final, TextIO
 from playwright.async_api import Browser, Page, async_playwright
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
+from benchmarks.chaos.ground_truth import ActionCheck
+from benchmarks.chaos.heal_cases import run_with_ground_truth
 from benchmarks.chaos.workflow_targets import load_workflow_targets
-from mendwork.adapters.artifacts_local.store import LocalArtifactStore
-from mendwork.adapters.browser_playwright.launcher import PlaywrightLauncher
-from mendwork.adapters.secrets_env.naming import secret_variable_name
 from mendwork.adapters.workflow_yaml.codec import WorkflowYamlCodec
-from mendwork.apps.cli.wiring import build_replayer, session_options
-from mendwork.engine.domain.events import RunEvent
-from mendwork.engine.domain.identifiers import SecretName
-from mendwork.engine.domain.runs import Run, RunStatus
+from mendwork.engine.domain.runs import Run, RunStatus, StepStatus
 from mendwork.engine.domain.workflow import WorkflowVersion
 from mendwork.observability import configure_logging
 from mendwork.settings import Settings
@@ -46,6 +49,7 @@ PAGES: Final = (
     ("reports", "reports.html"),
 )
 READY_TIMEOUT_MS: Final = 5_000
+ABSTAIN_EXPECTED: Final = "abstain_expected"
 # The portal's fictional demo account, documented in chaos-portal/README.md.
 DEMO_EMAIL: Final = "buyer@harborline.test"
 DEMO_PASSWORD: Final = "harbor-demo"  # noqa: S105 - a fictional, documented demo credential
@@ -57,6 +61,7 @@ class Applied(BaseModel):
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 
     id: str
+    category: str
     target_key: str | None = Field(alias="targetKey")
     description: str
 
@@ -66,12 +71,23 @@ _APPLIED: Final[TypeAdapter[list[Applied]]] = TypeAdapter(list[Applied])
 
 @dataclass(frozen=True)
 class SeedOutcome:
-    """One seed's run, the mutations each page received, and what caused a stop."""
+    """One seed's run, every action checked against ground truth, and what caused a stop."""
 
     seed: int
     run: Run
     applied: Mapping[str, tuple[Applied, ...]]
     cause: tuple[Applied, ...]
+    checks: tuple[ActionCheck, ...] = ()
+    page_wrong_actions: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class WrongAction:
+    """An action that should not have happened, and whether its step still succeeded."""
+
+    step_id: str | None
+    detail: str
+    step_succeeded: bool
 
 
 def parse_seeds(text: str) -> range:
@@ -101,30 +117,77 @@ def attribute(
     return tuple(mutation for mutation in applied.get(page, ()) if mutation.target_key == key)
 
 
+def checked_actions(outcome: SeedOutcome) -> tuple[ActionCheck, ...]:
+    """The actions ground truth could check: every action on a step with a target key."""
+    return tuple(check for check in outcome.checks if check.target_key is not None)
+
+
+def wrong_actions(outcome: SeedOutcome) -> tuple[WrongAction, ...]:
+    """Every action that reached the wrong element or an abstain target, and every wrong action
+    the page recorded."""
+    abstain_targets = {
+        mutation.target_key
+        for mutations in outcome.applied.values()
+        for mutation in mutations
+        if mutation.category == ABSTAIN_EXPECTED and mutation.target_key is not None
+    }
+    succeeded = {step.step_id for step in outcome.run.steps if step.status is StepStatus.SUCCEEDED}
+    found: list[WrongAction] = []
+    for check in checked_actions(outcome):
+        if check.correct is False:
+            detail = f"{check.action} at {check.step_id} did not reach {check.target_key}"
+        elif check.target_key in abstain_targets:
+            detail = f"{check.action} at {check.step_id} on {check.target_key}, which must abstain"
+        else:
+            continue
+        found.append(WrongAction(check.step_id, detail, check.step_id in succeeded))
+    found.extend(
+        WrongAction(None, f"the page recorded a wrong action: {label}", False)
+        for label in outcome.page_wrong_actions
+    )
+    return tuple(found)
+
+
+def false_successes(outcome: SeedOutcome) -> tuple[WrongAction, ...]:
+    """Wrong actions whose step passed its checkpoints anyway."""
+    return tuple(wrong for wrong in wrong_actions(outcome) if wrong.step_succeeded)
+
+
 def describe(outcome: SeedOutcome) -> str:
-    """One line per seed: the outcome, its cause, and every page's mutations."""
+    """One line per seed: the outcome, ground truth, its cause, and every page's mutations."""
     pages = " | ".join(
         f"{page}: " + (", ".join(f"{m.id}({m.target_key or 'page'})" for m in mutations) or "none")
         for page, mutations in outcome.applied.items()
     )
     run = outcome.run
+    healed = "; ".join(
+        f"{step.step_id} at rung {step.heal.healed_rung}"
+        for step in run.steps
+        if step.heal is not None and step.heal.healed_rung is not None
+    )
+    heals = f" | healed: {healed}" if healed else ""
+    wrong = wrong_actions(outcome)
+    truth = f" | checked {len(checked_actions(outcome))} actions, {len(wrong)} wrong"
+    if false_successes(outcome):
+        truth += ", FALSE SUCCESS: " + "; ".join(item.detail for item in false_successes(outcome))
+    elif wrong:
+        truth += ": " + "; ".join(item.detail for item in wrong)
     if run.status is RunStatus.SUCCEEDED:
-        return f"seed {outcome.seed}: succeeded | {pages}"
+        return f"seed {outcome.seed}: succeeded{heals}{truth} | {pages}"
     failed = run.failed_step
     where = f"step {failed.index + 1} {failed.step_id}" if failed is not None else "before any step"
     error = run.error.type if run.error is not None else "error"
+    reason = run.error.context.get("reason") if run.error is not None else None
+    if error == "HealAbstained" and reason is not None:
+        error = f"{error} ({reason})"
     cause = (
         "; ".join(f"{m.id} on {m.target_key}: {m.description}" for m in outcome.cause)
         or "no mutation targets this step directly"
     )
-    return f"seed {outcome.seed}: stopped at {where} with {error} | cause: {cause} | {pages}"
-
-
-class _Discard:
-    """Progress is not needed here; each run's record carries the outcome."""
-
-    async def emit(self, event: RunEvent) -> None:
-        return None
+    return (
+        f"seed {outcome.seed}: stopped at {where} with {error}{heals}{truth} | cause: {cause} "
+        f"| {pages}"
+    )
 
 
 async def ground_truth(
@@ -158,7 +221,7 @@ async def _sign_in(page: Page, portal: str) -> None:
 
 
 async def survey(portal: str, level: int, seeds: range, out: TextIO) -> list[SeedOutcome]:
-    """Replay every seed and report each one as it finishes."""
+    """Replay every seed with ground truth and report each one as it finishes."""
     settings = Settings()
     configure_logging(settings)
     content = await asyncio.to_thread(WORKFLOW_PATH.read_bytes)
@@ -166,28 +229,34 @@ async def survey(portal: str, level: int, seeds: range, out: TextIO) -> list[See
         content, source=str(WORKFLOW_PATH)
     )
     targets = load_workflow_targets(WORKFLOW_ID).targets
-    environ = {secret_variable_name(SecretName("portal_password")): DEMO_PASSWORD}
     outcomes: list[SeedOutcome] = []
-    with tempfile.TemporaryDirectory(prefix="mendwork-rung0-seeds-") as scratch:
+    with tempfile.TemporaryDirectory(prefix="mendwork-seed-survey-") as scratch:
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch()
             try:
-                launcher = await PlaywrightLauncher.create(browser, session_options(settings))
-                replayer = build_replayer(
-                    settings,
-                    launcher=launcher,
-                    artifacts=LocalArtifactStore(Path(scratch)),
-                    events=_Discard(),
-                    environ=environ,
-                )
                 for seed in seeds:
                     inputs = {
                         "portal_url": f"{portal}index.html?seed={seed}&level={level}",
                         "account_email": DEMO_EMAIL,
                     }
-                    run = await replayer.run(workflow, inputs)
+                    replay = await run_with_ground_truth(
+                        browser,
+                        workflow,
+                        inputs,
+                        targets,
+                        Path(scratch) / str(seed),
+                        settings=settings,
+                        signed_in=False,
+                    )
                     applied = await ground_truth(browser, portal, seed, level)
-                    outcome = SeedOutcome(seed, run, applied, attribute(run, targets, applied))
+                    outcome = SeedOutcome(
+                        seed,
+                        replay.run,
+                        applied,
+                        attribute(replay.run, targets, applied),
+                        replay.checks,
+                        replay.wrong_actions,
+                    )
                     outcomes.append(outcome)
                     out.write(describe(outcome) + "\n")
                     out.flush()
@@ -198,10 +267,16 @@ async def survey(portal: str, level: int, seeds: range, out: TextIO) -> list[See
 
 
 def summary(outcomes: Sequence[SeedOutcome], portal: str, level: int) -> str:
-    """The first stop and the first success, with the command that reproduces each."""
-    lines = []
+    """Ground truth totals, then the first stop and the first success with their commands."""
+    checked = sum(len(checked_actions(outcome)) for outcome in outcomes)
+    wrong = sum(len(wrong_actions(outcome)) for outcome in outcomes)
+    false = sum(len(false_successes(outcome)) for outcome in outcomes)
+    lines = [
+        f"ground truth: {checked} actions checked, {wrong} wrong, {false} false successes "
+        f"across {len(outcomes)} seeds"
+    ]
     for label, wanted in (
-        ("first Rung 0 stop", RunStatus.FAILED),
+        ("first stop", RunStatus.FAILED),
         ("first success", RunStatus.SUCCEEDED),
     ):
         found = next((outcome for outcome in outcomes if outcome.run.status is wanted), None)
@@ -227,8 +302,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--seeds", type=parse_seeds, default=parse_seeds("0-30"))
     arguments = parser.parse_args(argv)
     portal = arguments.portal if arguments.portal.endswith("/") else f"{arguments.portal}/"
-    asyncio.run(survey(portal, arguments.level, arguments.seeds, sys.stdout))
-    return 0
+    outcomes = asyncio.run(survey(portal, arguments.level, arguments.seeds, sys.stdout))
+    return 1 if any(wrong_actions(outcome) for outcome in outcomes) else 0
 
 
 if __name__ == "__main__":

@@ -54,6 +54,61 @@ def test_no_product_file_refers_to_the_chaos_ground_truth() -> None:
     assert offenders == []
 
 
+PORTAL: Final = REPO / "chaos-portal"
+EXAMPLES: Final = REPO / "workflows" / "examples"
+ENGINE: Final = PRODUCT / "engine"
+
+
+# Words every sign-in form uses. They name a concept (the session vocabulary in Settings, the
+# recorder's input descriptions), not one of the portal's controls.
+UNIVERSAL_WEB_TERMS: Final = frozenset(
+    {"Email address", "Log in", "Log out", "Sign in", "Sign out", "sign-in", "sign-out"}
+)
+
+
+def _portal_strings() -> set[str]:
+    """The chaos portal's control labels, ids, and test ids that a healer could memorize.
+
+    Single generic words ("Open", "Password") are left out: they belong to every web page.
+    """
+    targets = (PORTAL / "js" / "app" / "page-targets.js").read_text(encoding="utf-8")
+    found: set[str] = set()
+    for block in re.findall(r"synonyms: \[([^\]]*)\]", targets):
+        found.update(re.findall(r'"([^"]+)"', block))
+    found.update(re.findall(r'dangerousLabel: "([^"]+)"', targets))
+    for page in PORTAL.glob("*.html"):
+        found.update(
+            re.findall(
+                r'(?:id|data-testid)="([a-z]+-[a-z0-9-]+)"', page.read_text(encoding="utf-8")
+            )
+        )
+    for example in EXAMPLES.glob("*.yaml"):
+        found.update(
+            match.strip()
+            for match in re.findall(
+                r"accessible_name: ([^#\n]+)", example.read_text(encoding="utf-8")
+            )
+        )
+    return {text for text in found if " " in text or "-" in text} - UNIVERSAL_WEB_TERMS
+
+
+def test_no_engine_file_names_the_chaos_portals_controls() -> None:
+    labels = _portal_strings()
+    assert len(labels) > 40, "the guard found too few portal strings to mean anything"
+    files = sorted(ENGINE.rglob("*.py"))
+
+    offenders = {
+        str(path.relative_to(REPO)): sorted(
+            label
+            for label in labels
+            if label.casefold() in path.read_text(encoding="utf-8").casefold()
+        )
+        for path in files
+    }
+
+    assert {name: found for name, found in offenders.items() if found} == {}
+
+
 def test_every_page_script_is_type_checked_self_contained_and_namespaced() -> None:
     scripts = sorted(PAGE_SCRIPTS.glob("*.js"))
     assert [path.name for path in scripts] == [
@@ -61,6 +116,7 @@ def test_every_page_script_is_type_checked_self_contained_and_namespaced() -> No
         "element_facts.js",
         "element_identity.js",
         "element_keys.js",
+        "extract_candidates.js",
         "field_text.js",
         "field_value.js",
         "page_state.js",
@@ -131,5 +187,6 @@ def test_page_scripts_load_from_the_installed_package() -> None:
         scripts.element_ancestors,
         scripts.scope_facts,
         scripts.field_text,
+        scripts.extract_candidates,
     ):
         assert source.startswith("// @ts-check\n")

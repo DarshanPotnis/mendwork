@@ -1,7 +1,8 @@
 """The logic that decides is covered by unit tests alone, never only by browser tests.
 
-Rung 0, identity, consensus, checkpoint evaluation, pre-action checks, retries, and secret
-scrubbing live in engine/replay, engine/verification, and engine/safety. This test runs the
+Rung 0, identity, consensus, checkpoint evaluation, pre-action checks, retries, secret
+scrubbing, recording, and the heal ladder live in engine/replay, engine/verification,
+engine/safety, engine/recording, and engine/healing. This test runs the
 engine's fake-port unit tests (and the logging tests that exercise redaction) under coverage
 in a separate process, and fails if any file in those packages is below 90% line coverage
 there. Those tests are a subset of make check's fast suite, so a file that passes here also
@@ -22,11 +23,13 @@ PACKAGES: Final = (
     "src/mendwork/engine/verification/",
     "src/mendwork/engine/safety/",
     "src/mendwork/engine/recording/",
+    "src/mendwork/engine/healing/",
 )
 UNIT_TESTS: Final = (
     "tests/unit/replay",
     "tests/unit/recording",
     "tests/unit/safety",
+    "tests/unit/healing",
     "tests/unit/test_observability.py",
 )
 

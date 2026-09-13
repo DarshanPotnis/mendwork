@@ -12,7 +12,8 @@ from typing import Annotated, Literal, NewType
 from pydantic import Field, SecretStr
 
 from mendwork.engine.domain.base import DomainModel
-from mendwork.engine.domain.runs import IdentityReport, TraceWithheldReason
+from mendwork.engine.domain.runs import TraceWithheldReason
+from mendwork.engine.domain.targets import IdentityReport
 
 ElementRef = NewType("ElementRef", str)
 WatchId = NewType("WatchId", str)

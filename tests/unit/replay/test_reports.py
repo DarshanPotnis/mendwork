@@ -3,7 +3,8 @@
 import pytest
 from pydantic import SecretStr
 
-from mendwork.engine.domain.runs import ErrorCategory, SelectorOutcome, TargetEvidence
+from mendwork.engine.domain.runs import ErrorCategory
+from mendwork.engine.domain.targets import SelectorOutcome, TargetEvidence
 from mendwork.engine.errors import BrowserUnavailable, MendworkError, TargetNotFound
 from mendwork.engine.ports.browser_types import ElementIdentity
 from mendwork.engine.replay.reports import (

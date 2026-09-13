@@ -12,8 +12,8 @@ visible element. The verdict is a pure function of the hits and misses:
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from mendwork.engine.domain.runs import SelectorOutcome, SelectorReport
 from mendwork.engine.domain.selectors import Selector
+from mendwork.engine.domain.targets import SelectorOutcome, SelectorReport
 from mendwork.engine.ports.browser_types import UniqueMatch
 
 

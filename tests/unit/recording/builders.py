@@ -7,7 +7,8 @@ from pydantic import TypeAdapter
 
 from mendwork.engine.domain.selectors import Selector
 from mendwork.engine.ports.browser_types import ElementIdentity
-from mendwork.engine.ports.recording_types import CaptureRef, ElementFacts, Landmark
+from mendwork.engine.ports.element_types import ElementFacts
+from mendwork.engine.ports.recording_types import CaptureRef, Landmark
 from mendwork.engine.recording.config import RecordingConfig
 from mendwork.engine.recording.context import CaptureContext
 from mendwork.engine.replay.config import RetryPolicy

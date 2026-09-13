@@ -7,6 +7,7 @@ engine uses is always one an operator can see and change.
 from pydantic import Field
 
 from mendwork.engine.domain.base import DomainModel
+from mendwork.engine.healing.config import HealingConfig
 
 Milliseconds = int
 
@@ -37,3 +38,4 @@ class ReplayConfig(DomainModel):
     """How long to wait for a quiet DOM before evaluating selectors on a busy one."""
     settle_quiet_frames: int = Field(ge=1, le=60)
     retry: RetryPolicy
+    healing: HealingConfig

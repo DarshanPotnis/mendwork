@@ -10,7 +10,8 @@ from typing import Final
 
 from pydantic import JsonValue, ValidationError
 
-from mendwork.engine.domain.runs import ErrorCategory, ErrorReport, IdentityReport, TargetEvidence
+from mendwork.engine.domain.runs import ErrorCategory, ErrorReport
+from mendwork.engine.domain.targets import IdentityReport, TargetEvidence
 from mendwork.engine.errors import InfrastructureError, MendworkError
 from mendwork.engine.ports.browser_types import ElementIdentity
 from mendwork.engine.safety.secret_scrub import SecretScrubber

@@ -17,8 +17,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from mendwork.engine.domain.fingerprint import Fingerprint
-from mendwork.engine.domain.runs import IdentityReport, TargetEvidence
 from mendwork.engine.domain.selectors import Selector
+from mendwork.engine.domain.targets import IdentityReport, TargetEvidence
 from mendwork.engine.errors import (
     AmbiguousTarget,
     MendworkError,

@@ -107,7 +107,9 @@ mendwork/
 │   │   ├── ports/                # typing.Protocol interfaces, added by the phase that first uses each
 │   │   ├── recording/
 │   │   ├── replay/
-│   │   ├── healing/              # candidates.py, scoring.py, ladder.py, prompt.py
+│   │   ├── healing/              # candidates, features, scoring, acceptance, alternates, checks,
+│   │   │                         #   rung1, rung2, ladder, gates, recovery, run state, explain;
+│   │   │                         #   prompt.py in Phase 6
 │   │   ├── verification/
 │   │   ├── safety/               # risk, approvals, egress, budgets, redaction
 │   │   ├── patching/
@@ -116,8 +118,8 @@ mendwork/
 │   │   ├── browser_playwright/   # BrowserPort: launcher, session, Rung 0 primitives, tracing
 │   │   │   ├── recording/        # RecordingBrowser: recorder channel, messages, navigation log, sessions
 │   │   │   └── js/               # page scripts: page state, element identity and keys, field value,
-│   │   │                         #   the recorder and its element facts; later candidate extraction,
-│   │   │                         #   set-of-marks
+│   │   │                         #   the recorder and its element facts, candidate extraction;
+│   │   │                         #   later set-of-marks
 │   │   ├── models/               # fake.py, ollama.py, gemini.py, openai_compatible.py, anthropic.py
 │   │   ├── workflow_yaml/        # strict YAML decoding with line numbers, deterministic encoding
 │   │   ├── storage_fs/           # WorkflowStore on files: one directory per workflow, no-overwrite publish
@@ -140,7 +142,8 @@ mendwork/
 │   ├── js/mutations/             # one module per mutation
 │   └── types/                    # type-only .d.ts files (e.g. window.__chaos)
 ├── benchmarks/
-│   ├── chaos/                    # seed suites: heal_pairs.json + its generator (`make chaos-pairs`)
+│   ├── chaos/                    # heal_pairs.json and abstain_pairs.json + their generator
+│   │   │                         #   (`make chaos-pairs`), the heal fixture suite, seed surveys
 │   │   └── workflow_targets/     # per example workflow: step id → chaos target key (ground truth)
 │   ├── real_apps/                # release A → release B harness
 │   └── fixtures/dom/             # before/after DOM snapshots for fast tests
@@ -247,15 +250,27 @@ class WorkflowVersion(BaseModel):
     secrets: tuple[SecretName, ...]
     steps: tuple[Step, ...]            # 1–500
 
-class HealAttempt(BaseModel):          # Phase 5
-    step_id: StepId
-    rung: Literal[0, 1, 2, 3]
-    candidates: tuple[ScoredCandidate, ...]   # top N with per-feature breakdown
-    chosen: CandidateId | None
-    score: float | None
-    margin: float | None
-    model_usage: ModelUsage | None
-    outcome: Literal["resolved", "ambiguous", "not_found", "abstained", "budget_exceeded"]
+class HealAttemptReport(BaseModel):    # one per rung per attempt; engine/domain/heals.py (ADR 0009)
+    rung: Literal[0, 1, 2]                 # 3 arrives in Phase 6, with model usage
+    attempt: int                           # a failed verification starts another pass
+    outcome: RungOutcome                   # resolved, drifted, ambiguous, not_found, no_candidates,
+                                           #   below_threshold, below_margin, top_rejected,
+                                           #   candidate_cap_reached, page_never_stable
+    target: TargetEvidence | None          # selector evidence at Rungs 0 and 1
+    candidates: tuple[ScoredCandidate, ...]   # best first, with per-feature scores and rejections
+    considered: int; on_page: int
+    chosen: CandidateId | None; runner_up: CandidateId | None
+    score: float | None; margin: float | None
+    threshold: float | None; required_margin: float | None
+    kind_change: str | None                # e.g. "button → link"
+    verification: Verification             # not_performed, pending, passed, failed
+
+class HealReport(BaseModel):            # on StepResult
+    attempts: tuple[HealAttemptReport, ...]
+    recoveries: tuple[RecoveryReport, ...]
+    healed_rung: Literal[1, 2] | None
+    abstention: AbstentionReason | None
+    proposal: HealProposal | None          # for an irreversible step awaiting approval
 ```
 
 ### Step shapes
@@ -301,8 +316,9 @@ class HealAttempt(BaseModel):          # Phase 5
 
 ### Runs and events
 
-- **`Run`** (saved as `run.json`) records the workflow version, status, bound inputs (secrets by name only), one `StepResult` per step, and the run's error. A `StepResult` carries its Rung 0 evidence (every selector's per-level counts and outcome, the winning rank, the identity), navigation report, whether the action reached the page, checkpoint results, error, and artifact names. Steps after a failure are `not_run`.
-- **Events** are a discriminated union on `type`, each with `event_version`, `run_id`, a gap-free `sequence` from 1, and a Clock timestamp: `run_started`, `step_started`, `target_resolved`, `action_performed` (value kind, never the value), `checkpoint_passed`, `checkpoint_failed`, `step_succeeded`, `step_failed`, `run_finished`.
+- **`Run`** (saved as `run.json`) records the workflow version, status, bound inputs (secrets by name only), one `StepResult` per step, and the run's error. A `StepResult` carries its Rung 0 evidence (every selector's per-level counts and outcome, the winning rank, the identity, or the rung that healed it), navigation report, whether the action reached the page, checkpoint results, error, artifact names, and its `HealReport` when the ladder ran. Steps after the one the run stopped at are `not_run`.
+- **Stopping statuses.** A step fails, or stops for a person: `awaiting_approval` (a heal for an irreversible step) or `needs_review` (an irreversible action on a heal that failed verification). The run takes the same status; both exit 4.
+- **Events** are a discriminated union on `type`, each with `event_version`, `run_id`, a gap-free `sequence` from 1, and a Clock timestamp: `run_started`, `step_started`, `target_resolved`, `heal_attempted` (per rung, when it decides), `action_performed` (value kind, never the value), `checkpoint_passed`, `checkpoint_failed`, `heal_verified` (after the checkpoints), `state_restored`, `step_succeeded`, `step_failed` (with the stopping status), `run_finished`.
 - **Errors** carry a category: `step`, or `infrastructure` for `InfrastructureError` and anything unexpected.
 
 ### Versions
@@ -318,6 +334,9 @@ class HealAttempt(BaseModel):          # Phase 5
   - `AmbiguousTarget`
   - `TargetDrifted`: the selectors agree on one element whose identity differs from the fingerprint
   - `TargetNotActionable`: verified, but it cannot receive the action
+  - `HealAbstained`: the ladder found nothing it could safely act on, with a `reason`
+  - `ApprovalRequired`: a heal was found for an irreversible step
+  - `NeedsReview`: an irreversible action on a heal failed verification and is never retried
   - `PageNeverStable`: the page kept changing, so the target could not be verified safely
   - `CheckpointFailed`
   - `NavigationError`
@@ -335,7 +354,7 @@ class HealAttempt(BaseModel):          # Phase 5
     - `BrowserUnavailable`
     - `ArtifactStoreUnavailable`
 
-**Ports so far:** `Clock`, `WorkflowStore`, and from Phase 3 `BrowserLauncher`/`BrowserPort`, `ArtifactStore`, `EventSink`, `SecretResolver`, and the small ports that keep the engine deterministic: `Timer` (monotonic time and backoff pauses), `RandomSource` (jitter), and `RunIdGenerator`. From Phase 4, recording adds `RecordingLauncher`/`RecordingBrowser` (a BrowserPort plus page events, element facts, and the hold-back handshake), `RecordingObserver`, and `StopSignal`. `ModelPort` arrives in Phase 6. A store instance is bound to one tenant when it is constructed, so its methods take no workspace. Port data are plain models; no Playwright type crosses a port.
+**Ports so far:** `Clock`, `WorkflowStore`, and from Phase 3 `BrowserLauncher`/`BrowserPort`, `ArtifactStore`, `EventSink`, `SecretResolver`, and the small ports that keep the engine deterministic: `Timer` (monotonic time and backoff pauses), `RandomSource` (jitter), and `RunIdGenerator`. From Phase 4, recording adds `RecordingLauncher`/`RecordingBrowser` (a BrowserPort plus page events, element facts, and the hold-back handshake), `RecordingObserver`, and `StopSignal`. `ModelPort` arrives in Phase 6. A store instance is bound to one tenant when it is constructed, so its methods take no workspace. From Phase 5, `BrowserPort` also reads `element_facts` (moved up from the recording port) and `scan_candidates` for healing. Port data are plain models; no Playwright type crosses a port.
 
 ---
 
@@ -386,7 +405,7 @@ class HealAttempt(BaseModel):          # Phase 5
    5. Watch for the events the step's `download_completed` and `response_received` checkpoints observe.
    6. Perform the action on the pinned element, then let the page settle again.
    7. Evaluate every checkpoint (§8); a new tab or window fails the step.
-   8. **Pass:** record the `StepResult` and a screenshot, plus a `ChangeRecord` if the step was healed. **Fail:** record screenshot, DOM snapshot, and trace (unless it could hold a secret), then apply the recovery policy (§8). Phase 3 stops the run.
+   8. **Pass:** record the `StepResult` and a screenshot, plus a `ChangeRecord` if the step was healed (Phase 8). **Fail:** a SAFE or CAUTION heal that failed verification is recovered (§8) within its attempt limit; otherwise record screenshot, DOM snapshot, and trace (unless it could hold a secret) and stop the run.
 5. Finish: set the final status, total model usage and estimated cost, write `run.json`, emit `run_finished`, and apply the patch promotion policy (§9).
 
 Transient retries are **separate from healing**. Only a navigate step's page load is retried, for timeouts, dropped connections, and 502/503/504, with bounded exponential backoff and jitter. Actions and resolution are never retried. Every wait is bounded by the step, checkpoint, navigation, and run timeouts from Settings. Details: ADR 0007.
@@ -400,7 +419,7 @@ Each rung is more expensive than the one before it. We only climb when the rung 
 | Rung | What it does | Cost |
 |---|---|---|
 | **0** | Try the recorded selectors in ranked order. A selector must match **exactly one** visible element (every `within` level included): zero matches is not-found, and more than one is ambiguous, never a success. The one element must then pass the identity check below. | Free |
-| **1** | Try alternate selectors derived from the fingerprint (test id, role + name, label, placeholder, text). | Free |
+| **1** | Try alternate selectors derived from the fingerprint that were not recorded (test id, role + name, role + visible text, label, placeholder, text, stable id or name, each also within the recorded scopes). Accepts only the recorded identity. | Free |
 | **2** | Similarity scoring over live candidates (below). | Free |
 | **3** | The model chooses among the top-K candidates from Rung 2. | Cents or $0 local |
 | **4** | Abstain: pause for a human or fail with a full evidence report. | Free |
@@ -425,22 +444,50 @@ A selector that resolves to exactly one element is a candidate, not yet a succes
   - verification by the step's checkpoints.
 - **Examples:** harmless drift such as "Download CSV" → "Export data" can pass; "Download CSV" → "Delete data" must abstain.
 - **Why this exists:** ids and test ids routinely survive a relabel. The chaos portal's `dangerous_rename` keeps both, so `test_id` and `css` selectors still find the renamed control exactly once.
-- **Phasing:** Phase 3, which has no acceptance rules yet, stops on a drifted match with its evidence. Phase 5 routes drifted matches through heal acceptance.
+- **Phasing:** since Phase 5, a drifted match is not discarded: it joins Rung 2 as a candidate like any other and must earn acceptance on its merits.
+
+### When healing runs (ADR 0009)
+
+- Rung 0's `TargetNotFound`, `AmbiguousTarget`, and `TargetDrifted(identity_changed)` go to the ladder. `PageNeverStable`, a target that changed or detached before the action, and a run out of time do not.
+- Healing has its own budget (`MENDWORK_HEAL_TIMEOUT_MS`), capped by the run deadline.
+
+### Rung 1 — alternate selectors
+
+- Evaluated with Rung 0's consensus inside one consistent reading.
+- **Accepts only the recorded identity:** the alternates agree on one element whose identity matches the fingerprint exactly (confirmed by Playwright), it reaches the accept threshold, no safety rule refuses it, and it has not failed verification. No margin: uniqueness by identity rules out a look-alike.
+- Anything else it found joins Rung 2 as a candidate.
+- On a fresh recording Rung 1 has nothing new to try, because the recorder keeps every selector that resolved uniquely; it exists for hand-written or imported workflows and for recordings whose selectors have gone stale (ADR 0009, finding 5).
 
 ### Rung 2 — similarity scoring
 
-- **Candidate generation:** visible elements compatible with the action (clickable for CLICK, editable for FILL, and so on).
-- **Features**, each normalized to 0..1:
-  - accessible name similarity (rapidfuzz)
-  - role match
-  - attribute overlap
-  - label similarity
-  - nearby-text similarity
-  - structural path similarity
-  - position proximity
-- **Score:** a weighted sum. Weights live in `Settings`, not in code.
-- **Accept rule:** `top_score ≥ T_ACCEPT` **and** `top_score − second_score ≥ M_MARGIN`. The margin check is what prevents clicking one of two look-alike buttons.
-- Weights start hand-set (brute force). **Optional ML upgrade:** learn the weights, or a small ranking model, from benchmark data, then compare it against the hand-set weights and the LLM on accuracy, latency, and cost.
+- **Candidates.** The adapter's `scan_candidates` pins the visible elements the action could receive (`js/extract_candidates.js` finds them; the existing identity and facts scripts describe them, never reading a field's value). The engine keeps those the action can act on, adds the drifted Rung 0 match and any Rung 1 hit, and drops duplicates and candidates that already failed verification.
+- **The cap is a capability limit.** A page with more candidates than `MENDWORK_HEAL_CANDIDATES_MAX` (4,000) is never healed: scoring part of a page cannot prove the margin. The default is 2.3 times the heaviest page measured (a Wikipedia table with 1,769) and scans twice within the heal budget.
+- **Features**, each from 0 to 1, weights in Settings:
+
+  | Group | Feature | Weight |
+  |---|---|---|
+  | Wording | accessible name similarity (rapidfuzz token-sort, above a noise floor) | 0.25 |
+  | | label similarity (the name, for controls without a label) | 0.05 |
+  | Identity attributes | recorded id, name, test id, autocomplete, href, aria-label, placeholder that survived | 0.25 |
+  | Kind | role match (0.5 within button/link/menuitem) | 0.10 |
+  | | tag and effective type | 0.05 |
+  | Context | nearby-text similarity (the path, when none was recorded) | 0.10 |
+  | | structural path similarity | 0.10 |
+  | Position | box-centre proximity | 0.10 |
+
+  A clue the recording did not have scores 0; groups are never renormalized.
+- **Score:** the weighted sum, rounded to nine decimals, ranked by score then signature, never by page order.
+- **Accept rule:** the top candidate must pass every safety rule, `top_score ≥ T_ACCEPT` (0.60), `top_score − best unrefused other ≥ M_MARGIN` (0.15), and Playwright must confirm its identity. Otherwise abstain, with both numbers in the evidence.
+- **Why those numbers.** Losing any one group of clues still scores at least 0.70; with no wording and no identity attributes in common a candidate tops out at 0.45; no single layout clue weighs more than 0.10. Settings refuses any configuration where context can reach the threshold or one weak clue can open the margin.
+- Weights are derived, not tuned. **Optional ML upgrade:** learn the weights, or a small ranking model, from benchmark data, then compare it against the derived weights and the LLM on accuracy, latency, and cost.
+
+### Safety rules that override score
+
+- **Danger words:** a candidate whose name, text, or label adds a danger word the recording did not have is refused, read through the risk classifier's own function and vocabulary.
+- **Identifiers:** a candidate naming a different number than the recording ("INV-7780" for "INV-2231") is refused.
+- **Kind:** submit, activate, toggle, text entry, date, and choice controls never stand in for one another. A button ↔ link change within activate or submit is allowed only when the step has an effect checkpoint, which then proves the activation was equivalent.
+- **Credentials:** a credential is typed only into a masked field a selector can mask in screenshots, and a plain value never into a masked one.
+- **Gates after acceptance:** a heal needs a checkpoint that can prove it; an irreversible step stops for approval with a proposal; a step acts on at most `MENDWORK_HEAL_MAX_ATTEMPTS` healed targets, and an authentication step on one.
 
 ### Rung 3 — constrained model choice
 
@@ -454,7 +501,7 @@ A selector that resolves to exactly one element is a candidate, not yet a succes
 - The model's confidence alone never accepts a heal. The chosen element must still pass verification.
 - **Budgets:** a maximum number of model calls per run and per workspace per day. Exceeding either raises `BudgetExceeded` and abstains.
 
-Every rung emits a `HealAttempt` event with its full evidence, so every decision can be explained later.
+Every rung emits a `heal_attempted` event with its full evidence, and `heal_verified` follows the checkpoints, so every decision can be explained later.
 
 ---
 
@@ -484,11 +531,20 @@ Response checkpoints are not proposed. Users can edit any of them. Every waiting
 
 | Risk | On failed checkpoint after a heal |
 |---|---|
-| SAFE | Restore the last good checkpoint state (re-navigate or replay from it), try the next candidate, up to `MAX_HEAL_ATTEMPTS`. |
-| CAUTION | Same as SAFE, and reset the affected form state first. |
-| IRREVERSIBLE | Never auto-retry. Heals require approval **before** acting. If a run is interrupted after an irreversible action executed, it becomes `NEEDS_REVIEW` and is never re-queued automatically. |
+| SAFE | Restore the last known-good state, exclude the failed candidate, and run the ladder again, up to `MENDWORK_HEAL_MAX_ATTEMPTS`. |
+| CAUTION | Same as SAFE, and clear the field a failed fill typed into first. |
+| IRREVERSIBLE | Never auto-retry. Heals require approval **before** acting. An irreversible action that ran on a heal and failed verification ends the run in `NEEDS_REVIEW`; a run interrupted after an irreversible action executed also becomes `NEEDS_REVIEW` (Phase 7) and is never re-queued automatically. |
 
-**Authentication steps** (steps that fill a credential or submit one) get at most **one** heal attempt, whatever their risk level. Repeated attempts can lock the account.
+**Restoring the last known-good state** (ADR 0009):
+
+1. Every step records the document and URL it began on; the steps that began on the failed step's document are its segment.
+2. The segment's first URL is re-opened (unsaved state is discarded) and must be landed on exactly.
+3. The segment's earlier steps are replayed quietly, each resolved by Rung 0 or by its own verified heal, with every checkpoint passing again.
+4. Restoring is refused when it would replay an irreversible step, and fails when the page lands elsewhere or a replay fails. The step then abstains; nothing is retried blindly.
+
+A step with no checkpoint that can prove a heal abstains rather than healing silently. A verified heal is reused only for replays of the same step within a restore.
+
+**Authentication steps** (steps that fill a credential, or that the risk classifier reads as changing the session, including submitting a form that holds a password) get at most **one** heal attempt per run, whatever their risk level. Repeated attempts can lock the account.
 
 ### Risk classification
 
@@ -508,6 +564,7 @@ Risk is classified **by consequence**, not by mechanism:
   4. A form control is `CAUTION`.
 - **Unknown is `CAUTION`.** A plain button or a submit with no recognised word ("Continue", "Next", "OK") changes something reversible as far as anyone can tell. Calling it irreversible would make approvals so frequent that people stop reading them. Stricter is chosen within this order, never by defaulting to `IRREVERSIBLE`.
 - **The vocabulary lives in Settings** (`MENDWORK_RISK_*`). Soft verbs must be danger words, and view-state nouns must be read words.
+- **One source of danger.** The healer reads danger words and session phrases through the classifier's own functions (`danger_words_in`, `authentication_reason`) and the same vocabulary, and a test proves the two cannot disagree.
 - **Overrides.** Users can raise a step's risk level, but cannot lower an auto-detected `IRREVERSIBLE` without an audit entry.
 
 ### Egress policy (SSRF protection)
@@ -630,6 +687,12 @@ class ModelPort(Protocol):
   - two equally plausible controls
   - control renamed to a dangerous opposite (e.g. "Download" → "Delete data")
 
+### Heal fixture suite
+
+- Every heal_expected pair (`heal_pairs.json`) and abstain_expected pair (`abstain_pairs.json`) on a target the example workflows act on, plus `cookie_banner` on each page they visit: 67 cases.
+- Each case replays the committed steps on the mutated page. Before every action, a test-side wrapper asks `window.__chaos.locate` whether the pinned element is the step's real target; a miss, a recorded wrong action, or any action at an abstain step fails the case.
+- Cases run in separate browser contexts, a few at a time; the suite prints a per-mutation table (resolved, abstained, wrong, rungs). The same cases run outside pytest with `python -m benchmarks.chaos.heal_suite`.
+
 ### Real-app pairs
 
 A workflow recorded on release A of a self-hosted open-source web app is replayed on release B, running locally in Docker. These are real UI changes nobody faked, on our own instances, so there is no terms-of-service issue.
@@ -663,7 +726,7 @@ Versioned results JSON and a static HTML scorecard. CI runs a small smoke benchm
 | Layer | Covers | Rules |
 |---|---|---|
 | Unit | domain, scoring, policies, prompt building, parsing | No network, no browser; fakes from `tests/fakes`; `hypothesis` for invariants |
-| DOM fixtures | heal ladder decisions | Saved before/after snapshots loaded with `page.set_content`; a wrong click fails the test |
+| Heal fixtures | heal ladder decisions | Live chaos portal pairs with ground truth checked at every action; `page.set_content` pages for the candidate scan; a wrong action fails the test |
 | Integration | replayer, recorder, verifier | Against the locally served chaos portal only |
 | Provider contract | model adapters | Recorded HTTP fixtures (`respx`); live calls only via `make live-providers` |
 | API | endpoints, tenant isolation, queue | Real Postgres (CI service container); isolation tests for every resource |

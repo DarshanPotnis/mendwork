@@ -1,7 +1,8 @@
 """Slow tests stay marked slow, so the fast suite keeps its time budget.
 
 Slow means launching Chromium through the CLI, sweeping every heal pair, replaying the
-examples against the portal in-process, or recording in Chromium. `make check` skips `slow`;
+examples against the portal in-process, running the heal fixture suite, recording in Chromium,
+or proving the chaos portal's determinism. `make check` skips `slow`;
 `make check-all` and CI run everything. A test that reaches a slow fixture from an unmarked
 module, or a slow module that loses its marker, would quietly move into `make check`, so
 this guard reads every test module and fails first.
@@ -18,6 +19,8 @@ SLOW_FIXTURES: Final = frozenset({"cli_browser", "heal_pair_sweep"})
 SLOW_MODULES: Final = frozenset(
     {
         "integration/test_replay_portal.py",
+        "integration/test_heal_fixture_suite.py",
+        "integration/test_chaos_determinism.py",
         "integration/test_recording_boundary.py",
         "integration/test_recording_interactions.py",
         "integration/test_recording_portal.py",

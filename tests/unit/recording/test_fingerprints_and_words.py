@@ -4,7 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from mendwork.engine.domain.enums import ActionType, AriaRole
-from mendwork.engine.ports.recording_types import Box, PressKey
+from mendwork.engine.ports.element_types import Box
+from mendwork.engine.ports.recording_types import PressKey
 from mendwork.engine.recording.describe import (
     navigate_words,
     role_word,

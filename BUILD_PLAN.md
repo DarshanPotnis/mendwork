@@ -257,19 +257,66 @@ sets, the ratchet including engine/recording; ARCHITECTURE.md, BUILD_PLAN.md, an
 ## Phase 5 — Free healing (Rungs 1–2)
 
 ```
-Phase 5 — Healing without AI.
-Read ARCHITECTURE.md §7 (Rungs 0–2), §8 (recovery). Present a plan and wait for approval.
+Phase 5 — Healing without AI (Rungs 1 and 2).
+Read CLAUDE.md, ARCHITECTURE.md §5–§8, ADRs 0006–0008, and chaos-portal/README.md. Present a plan
+and wait for approval. Goal: when Rung 0 can't safely proceed, Mendwork finds the intended element
+by meaning with free heuristics only, verifies the result, and continues; when it isn't sure, it
+abstains. It never performs a wrong action.
 
-- engine/healing/candidates.py: candidate extraction contract (what the browser adapter must return: role, name, label, text, attributes, nearby text, structural path, bbox) and filtering by action compatibility and visibility. The browser adapter implements extraction in js/extract_candidates.js (same JavaScript standards, covered by `make jscheck`); the engine only consumes the data.
-- engine/healing/scoring.py: pure per-feature similarity functions and weighted total; weights, T_ACCEPT, M_MARGIN from Settings.
-- engine/healing/ladder.py: Rung 0 → 1 → 2; accept only if score ≥ T_ACCEPT and margin ≥ M_MARGIN; otherwise abstain (Rung 3 comes next phase). Drifted Rung 0 matches go through the same acceptance rules. Emit HealAttempt with top-5 candidates and per-feature breakdowns.
-- Authentication steps (filling a credential or submitting one) get at most one heal attempt, to avoid account lockouts (ADR 0006).
-- Replayer integration: healed steps must pass verification; SAFE/CAUTION recovery tries the next candidate after restoring the last good checkpoint, up to MAX_HEAL_ATTEMPTS; IRREVERSIBLE steps with a healed target return AWAITING_APPROVAL (approval flow arrives in Phase 7 — for now the run stops in that state).
-- benchmarks/fixtures/dom/: a script that generates before/after DOM snapshots from the chaos portal for every mutation and several seeds, with ground truth.
-- Fixture test suite: heal_expected → correct element chosen; abstain_expected → abstain. A wrong choice fails the test.
-- Property tests: an identical element always scores highest; for two candidates identical except name similarity, the closer name scores higher.
+When healing runs
+- Rung 0's TargetNotFound, AmbiguousTarget, and TargetDrifted(identity_changed) feed the ladder;
+  PageNeverStable and targets that change before the action do not. Healing has its own budget
+  (MENDWORK_HEAL_TIMEOUT_MS). A drifted Rung 0 match joins Rung 2 as a candidate like any other.
+- Rung 1: alternate selectors derived from the fingerprint and not recorded (test id, role+name,
+  role+text, label, placeholder, text, stable id/name, each within the recorded scopes), evaluated
+  with Rung 0's consensus; accepts only the recorded identity, confirmed and above the threshold.
+- Rung 2: BrowserPort.scan_candidates (js/extract_candidates.js finds visible action-compatible
+  elements; the identity and facts scripts describe them) and pure scoring in engine/healing.
+  A page over MENDWORK_HEAL_CANDIDATES_MAX is never healed (a capability limit; measure real
+  pages to set it). Rung 3 is Phase 6; until then, abstain with full evidence.
 
-Acceptance: make check passes; print a results table per mutation (resolved / abstained / wrong) — wrong must be 0. Report which heal_expected mutations Rung 2 cannot yet resolve.
+Scoring (weights, threshold, margin in Settings; ADR 0009)
+- Features: name, label, identity attributes, role, tag/type, nearby text, structural path,
+  position; derived from invariants, not tuned on the portal. Settings refuses weights that let
+  context alone reach T_ACCEPT, or a margin one weak clue could open.
+- Accept only when the top candidate passes every safety rule, top ≥ T_ACCEPT, top − best unrefused
+  other ≥ M_MARGIN, and Playwright confirms its identity. Report both numbers.
+
+Safety rules that override score (engine/safety/heal_policy.py)
+- Danger words through the classifier's own function and vocabulary (a test proves one source);
+  a different identifier in the name; a change of interaction class (button ↔ link only with an
+  effect checkpoint); credentials only into maskable masked fields.
+- Gates: a checkpoint that can prove the heal (else abstain); IRREVERSIBLE stops as
+  AWAITING_APPROVAL with a proposal (exit 4); MENDWORK_HEAL_MAX_ATTEMPTS per step, one for
+  authentication steps.
+
+Verification and recovery
+- A heal counts only once its checkpoints pass. A failed SAFE/CAUTION heal is excluded, the page
+  restored (segment re-opened, CAUTION fills cleared, earlier steps replayed with their own
+  verified heals), and the ladder runs again; restoring past an irreversible step is refused.
+  An irreversible action on a heal that fails verification ends NEEDS_REVIEW, never retried.
+
+Evidence and output
+- heal_attempted per rung, heal_verified, state_restored; HealReport on the step. Human output
+  shows what was recorded, what was found, why it was accepted, and verification; an abstention
+  explains what was compared and ends with a next step chosen by its reason.
+
+Fixture suite (benchmarks/chaos/heal_cases.py, tests/integration/test_heal_fixture_suite.py)
+- Every heal_expected pair (heal_pairs.json) and abstain_expected pair (abstain_pairs.json, now
+  written by make chaos-pairs) on the example workflows' targets, plus cookie_banner per page;
+  segments of the committed workflows; ground truth from window.__chaos.locate at every action.
+  Heal cases must resolve, abstain cases must abstain, and wrong actions must be 0. The suite
+  prints a per-mutation table and runs concurrently; its outcomes must repeat identically.
+
+Tests: unit (fake browser) for rung order, accept/threshold/margin, every safety rule, attempt
+limits, recovery, no-checkpoint abstention, events, the drifted-candidate path, and guidance per
+reason; property tests (identical scores highest, danger never accepted, order invariance, name
+monotonicity, invariants for every accepted configuration); the candidate scan in Chromium; the
+suite; seed 0 at level 3 heals and completes with a 14-row CSV. The ratchet covers engine/healing.
+
+Acceptance: make check under 60 s and make check-all under 150 s (caffeinate -i), both coverage
+sets; the per-mutation table, seed 0's output, the unresolved mutations, and zero wrong actions;
+ARCHITECTURE.md §7 and ADR 0009 updated. The chaos portal's determinism checks moved to slow.
 ```
 
 ---

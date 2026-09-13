@@ -9,13 +9,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
-from mendwork.engine.errors import MendworkError, TargetNotFound
+from mendwork.engine.errors import MendworkError
 from mendwork.engine.ports.browser_types import ElementRef, WatchId
 from mendwork.engine.ports.recording import StopSignal
 from mendwork.engine.ports.recording_types import (
     AncestorFacts,
     CaptureRef,
-    ElementFacts,
     FieldText,
     Landmark,
     NavigationCommitted,
@@ -37,11 +36,8 @@ class FakeRecordingBrowser(FakeBrowser):
     """Returned by flush_pending."""
     captured: dict[tuple[str, int], str] = field(default_factory=dict)
     """(document, page element key) to the element key in ``elements``."""
-    facts: dict[str, ElementFacts] = field(default_factory=dict)
     ancestors: dict[str, tuple[AncestorFacts, ...]] = field(default_factory=dict)
     field_texts: dict[str, FieldText] = field(default_factory=dict)
-    detached: set[str] = field(default_factory=set)
-    """Elements whose facts can no longer be read."""
     title: str = ""
     landmarks: tuple[Landmark, ...] = ()
     live_texts: tuple[str, ...] = ()
@@ -100,12 +96,6 @@ class FakeRecordingBrowser(FakeBrowser):
 
     async def finish_capture(self, ref: CaptureRef) -> None:
         self.finished.append(ref)
-
-    async def element_facts(self, element: ElementRef) -> ElementFacts:
-        key = self._refs[element]
-        if key in self.detached:
-            raise TargetNotFound("detached", reason="detached_while_recording")
-        return self.facts[key]
 
     async def scope_ancestors(
         self, element: ElementRef, *, limit: int

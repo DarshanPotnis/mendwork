@@ -6,10 +6,13 @@ import pytest
 
 from mendwork.engine.errors import (
     AmbiguousTarget,
+    ApprovalRequired,
     BudgetExceeded,
     CheckpointFailed,
+    HealAbstained,
     MendworkError,
     NavigationError,
+    NeedsReview,
     PolicyViolation,
     ProviderError,
     TargetNotFound,
@@ -32,6 +35,9 @@ ERROR_TYPES: list[type[MendworkError]] = [
     WorkflowValidationError,
     UnsupportedSchemaVersion,
     VersionConflict,
+    HealAbstained,
+    ApprovalRequired,
+    NeedsReview,
 ]
 
 

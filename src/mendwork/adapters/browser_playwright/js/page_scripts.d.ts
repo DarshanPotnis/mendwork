@@ -156,6 +156,21 @@ interface MendworkScopeFacts {
   rowHeader: string | null;
 }
 
+// Healing.
+
+/** Which elements a candidate scan looks for, and how many it returns at most. */
+interface CandidateScanRequest {
+  kind: "click" | "press" | "fill" | "select" | "none";
+  limit: number;
+}
+
+/** What extract_candidates.js returns: element references and a count, nothing else. */
+interface CandidateScanResult {
+  elements: Element[];
+  /** Every matching visible element, including those beyond the limit. */
+  total: number;
+}
+
 /** A field's content, or only the fact that it is masked. */
 interface MendworkFieldText {
   masked: boolean;

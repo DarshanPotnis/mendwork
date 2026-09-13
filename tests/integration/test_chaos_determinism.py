@@ -13,7 +13,7 @@ from tests.integration.portal import (
     portal_session,
 )
 
-pytestmark = [pytest.mark.browser, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.browser, pytest.mark.slow, pytest.mark.asyncio(loop_scope="session")]
 
 # Five years ahead of any date in the dataset: a page that read the clock would differ.
 FAR_FUTURE = datetime(2031, 6, 15, 9, 30, tzinfo=UTC)

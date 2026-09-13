@@ -27,7 +27,7 @@ from mendwork.engine.domain.limits import (
 )
 from mendwork.engine.domain.selectors import Selector
 from mendwork.engine.ports.browser_types import ElementIdentity
-from mendwork.engine.ports.recording_types import Box, ElementFacts
+from mendwork.engine.ports.element_types import Box, ElementFacts
 
 _TEXT: Final[TypeAdapter[str]] = TypeAdapter(Text)
 _LONG_TEXT: Final[TypeAdapter[str]] = TypeAdapter(LongText)

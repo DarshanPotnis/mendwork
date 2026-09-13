@@ -1,4 +1,4 @@
-"""The replayer: runs a workflow version at Rung 0 and keeps its record.
+"""The replayer: runs a workflow version, healing where Rung 0 cannot, and keeps its record.
 
 Preflight comes first and creates nothing: inputs are bound and secrets checked before a
 run id exists, so an invalid run leaves no artifacts behind. From then on, every outcome
@@ -8,10 +8,12 @@ and a ``run_finished`` event.
 
 import asyncio
 from collections.abc import Mapping, Sequence
+from typing import Final
 
 import structlog
 
 from mendwork.engine.domain.runs import (
+    STOPPING_STATUSES,
     ErrorCategory,
     ErrorReport,
     Run,
@@ -38,6 +40,12 @@ from mendwork.engine.replay.reports import error_report
 from mendwork.engine.replay.step_runner import StepRunner
 from mendwork.engine.replay.values import ValueResolver
 from mendwork.engine.safety.secret_scrub import SecretScrubber
+
+_RUN_STATUS_FOR_STOP: Final = {
+    StepStatus.FAILED: RunStatus.FAILED,
+    StepStatus.AWAITING_APPROVAL: RunStatus.AWAITING_APPROVAL,
+    StepStatus.NEEDS_REVIEW: RunStatus.NEEDS_REVIEW,
+}
 
 
 class Replayer:
@@ -169,7 +177,7 @@ class Replayer:
                         )
                     result = await runner.run(index, step)
                     results.append(result)
-                    if result.status is StepStatus.FAILED:
+                    if result.status in STOPPING_STATUSES:
                         return None
         except TimeoutError:
             if not scope.expired():
@@ -188,10 +196,12 @@ class Replayer:
         scrubber: SecretScrubber,
         started: float,
     ) -> Run:
-        failed = next((result for result in results if result.status is StepStatus.FAILED), None)
-        final_error = error or (failed.error if failed is not None else None)
+        stopped = next((result for result in results if result.status in STOPPING_STATUSES), None)
+        final_error = error or (stopped.error if stopped is not None else None)
         complete = len(results) == len(workflow.steps)
         status = RunStatus.SUCCEEDED if final_error is None and complete else RunStatus.FAILED
+        if error is None and stopped is not None:
+            status = _RUN_STATUS_FOR_STOP[stopped.status]
         if status is RunStatus.FAILED and final_error is None:
             final_error = ErrorReport(
                 type="RunIncomplete",

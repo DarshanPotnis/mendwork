@@ -115,7 +115,7 @@ async def run_fixture(
     )
 
 
-async def test_selectors_that_find_different_elements_stop_without_clicking(
+async def test_selectors_that_find_different_elements_abstain_without_clicking(
     browser: Browser, tmp_path: Path
 ) -> None:
     page = """<main>
@@ -138,13 +138,15 @@ async def test_selectors_that_find_different_elements_stop_without_clicking(
         inspect=inspect,
     )
 
-    error = outcome.step("save").error
-    assert error is not None
-    assert (error.type, error.context["reason"], error.context["groups"]) == (
-        "AmbiguousTarget",
-        "selectors_disagree",
-        [[0], [1]],
-    )
+    step = outcome.step("save")
+    assert step.error is not None
+    assert step.error.type == "HealAbstained"
+    assert step.heal is not None
+    rung0 = step.heal.attempts[0]
+    assert (rung0.rung, rung0.outcome) == (0, "ambiguous")
+    assert rung0.target is not None
+    assert [identity.name for identity in rung0.target.elements] == ["Save", "Save"]
+    assert not step.action_performed
     assert titles == [""]
 
 

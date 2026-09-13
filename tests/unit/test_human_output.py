@@ -21,17 +21,15 @@ from mendwork.engine.domain.runs import (
     ErrorReport,
     Run,
     RunStatus,
-    SelectorOutcome,
-    SelectorReport,
     StepArtifacts,
     StepResult,
     StepStatus,
-    TargetEvidence,
     TraceWithheld,
     TraceWithheldReason,
     parse_artifact_name,
     parse_run_id,
 )
+from mendwork.engine.domain.targets import SelectorOutcome, SelectorReport, TargetEvidence
 
 RUN_ID = parse_run_id("20260911T141502Z-7c1e09ab")
 AT = datetime(2026, 9, 11, 14, 15, 2, tzinfo=UTC)

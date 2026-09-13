@@ -108,7 +108,7 @@ class DraftStep(DomainModel):
     step_id: StepIdField
     action: ActionType
     description: Text
-    """A line a non-developer can check, such as "CLICK the 'Download CSV' button"."""
+    """A line a non-developer can check, such as "CLICK the 'Export ledger' button"."""
     intent: Text
     risk: RiskLevel
     risk_reasons: tuple[Text, ...] = ()

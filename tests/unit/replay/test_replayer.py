@@ -272,7 +272,7 @@ async def test_a_failed_step_stops_the_run_with_its_evidence() -> None:
     assert run.steps[0].action_performed
 
 
-async def test_resolution_failures_are_not_retried() -> None:
+async def test_a_target_nothing_matches_abstains_without_retrying_or_acting() -> None:
     flow = workflow()
     page = page_for(flow)
     page.finds.clear()
@@ -282,7 +282,7 @@ async def test_resolution_failures_are_not_retried() -> None:
 
     error = run.steps[1].error
     assert error is not None
-    assert error.type == "TargetNotFound"
+    assert (error.type, error.context["reason"]) == ("HealAbstained", "no_candidates")
     assert subject.events.types.count("step_started") == 2
     assert not run.steps[1].action_performed
     assert "fill:email" not in page.calls

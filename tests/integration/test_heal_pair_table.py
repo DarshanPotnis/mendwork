@@ -1,4 +1,4 @@
-"""The committed heal pair table stays in step with the portal it describes.
+"""The committed pair tables (heal and abstain) stay in step with the portal they describe.
 
 If a target declaration, an eligibility rule, or the selection logic changes, these tests
 fail, name the pairs that no longer match, and say how to regenerate the table.
@@ -9,8 +9,11 @@ from collections.abc import Iterable
 import pytest
 
 from benchmarks.chaos.heal_pairs import (
+    ABSTAIN,
+    HEAL,
     REGENERATE_HINT,
-    TABLE_PATH,
+    TABLE_PATHS,
+    Category,
     eligible_pairs,
     load_table,
     render_table,
@@ -27,31 +30,40 @@ def _listing(pairs: Iterable[tuple[str, str, str]]) -> str:
     )
 
 
-async def test_the_table_file_is_in_canonical_form() -> None:
-    table = load_table()
+CATEGORIES = pytest.mark.parametrize("category", [HEAL, ABSTAIN])
 
-    assert TABLE_PATH.read_text(encoding="utf-8") == render_table(table.pairs), (
-        f"heal_pairs.json was edited by hand or is unsorted. {REGENERATE_HINT}"
+
+@CATEGORIES
+async def test_the_table_file_is_in_canonical_form(category: Category) -> None:
+    path = TABLE_PATHS[category]
+    table = load_table(path)
+
+    assert path.read_text(encoding="utf-8") == render_table(table.pairs, category), (
+        f"{path.name} was edited by hand or is unsorted. {REGENERATE_HINT}"
     )
 
 
-async def test_the_table_lists_exactly_the_pairs_the_portal_allows(portal: PortalDriver) -> None:
+@CATEGORIES
+async def test_the_table_lists_exactly_the_pairs_the_portal_allows(
+    portal: PortalDriver, category: Category
+) -> None:
     await portal.sign_in()
-    derived = await eligible_pairs(portal.page, portal.base_url)
-    recorded = {pair.key for pair in load_table().pairs}
+    derived = await eligible_pairs(portal.page, portal.base_url, category)
+    recorded = {pair.key for pair in load_table(TABLE_PATHS[category]).pairs}
 
     missing = derived - recorded
     stale = recorded - derived
     assert not missing | stale, (
-        "The heal pair table no longer matches the portal's target declarations and "
+        f"The {category} pair table no longer matches the portal's target declarations and "
         f"eligibility rules.\nMissing from the table:{_listing(missing) or ' none'}"
         f"\nIn the table but no longer eligible:{_listing(stale) or ' none'}\n{REGENERATE_HINT}"
     )
 
 
-async def test_every_seed_still_selects_its_pair(portal: PortalDriver) -> None:
+@CATEGORIES
+async def test_every_seed_still_selects_its_pair(portal: PortalDriver, category: Category) -> None:
     await portal.sign_in()
-    table = load_table()
+    table = load_table(TABLE_PATHS[category])
     selected = await selected_targets(portal.page, portal.base_url, table.pairs)
 
     wrong = {

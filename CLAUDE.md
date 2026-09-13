@@ -98,9 +98,9 @@ Both are plain JavaScript with **no build step**, type-checked by TypeScript.
 - **Model provider tests:** recorded HTTP fixtures via `respx`. Live calls run only via `make live-providers`, never in CI.
 - **Deterministic always:** fixed seeds, injected clock, no sleeps, no order-dependent tests.
 - Tests that assert on CLI output must read it through the `plain_stdout` fixture (`tests/conftest.py`); rich/typer emit ANSI styling when `GITHUB_ACTIONS`, `FORCE_COLOR`, or `PY_COLORS` is set.
-- Tests that launch Chromium through the CLI (the `cli_browser` fixture), sweep every heal pair, replay the examples against the portal in-process (`test_replay_portal.py`), or record in Chromium (every `test_recording_*.py` browser module) are marked `slow`; `tests/unit/test_slow_marker.py` fails when the split drifts.
+- Tests that launch Chromium through the CLI (the `cli_browser` fixture), sweep every heal pair, replay the examples against the portal in-process (`test_replay_portal.py`), run the heal fixture suite (`test_heal_fixture_suite.py`), check the chaos portal's determinism (`test_chaos_determinism.py`), or record in Chromium (every `test_recording_*.py` browser module) are marked `slow`; `tests/unit/test_slow_marker.py` fails when the split drifts.
 - `make check-all`'s coverage gates are the contract; `make check`'s are an early warning set just below the fast suite's figures (ADR 0007).
-- Every file in `engine/replay`, `engine/verification`, `engine/safety`, and `engine/recording` must keep ≥ 90% line coverage from unit tests alone; `tests/unit/test_coverage_ratchet.py` enforces it.
+- Every file in `engine/replay`, `engine/verification`, `engine/safety`, `engine/recording`, and `engine/healing` must keep ≥ 90% line coverage from unit tests alone; `tests/unit/test_coverage_ratchet.py` enforces it.
 - **Coverage gates:** `mendwork.engine` ≥ 90% lines; overall ≥ 85%.
 - **A wrong click is a failing test.** The heal fixture suite's wrong-action count must be exactly 0.
 - Use `hypothesis` for invariants: serialization round-trips, scoring monotonicity, policy ordering.
@@ -123,7 +123,7 @@ Both are plain JavaScript with **no build step**, type-checked by TypeScript.
 | `make check-all` | lint + typecheck + imports + jscheck + test-all (what CI runs; must pass before any phase is done) |
 | `make schema` | Regenerate `schemas/workflow.schema.json` from the domain models (a test fails when it is stale) |
 | `make portal` | Serve the chaos portal locally |
-| `make chaos-pairs` | Regenerate `benchmarks/chaos/heal_pairs.json`, the seed for every heal mutation–target pair |
+| `make chaos-pairs` | Regenerate `benchmarks/chaos/heal_pairs.json` and `abstain_pairs.json`, the seed for every mutation–target pair |
 | `make recording-golden` | Regenerate `tests/fixtures/recordings/download_report.yaml` from a fresh scripted recording (a test fails when it is stale) |
 | `make bench` | Run the benchmark and build the scorecard (Phase 9+) |
 | `make live-providers` | Opt-in live model provider tests (local only) |

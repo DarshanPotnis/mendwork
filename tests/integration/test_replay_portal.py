@@ -1,5 +1,8 @@
 """The example workflows replayed in real Chromium against the chaos portal, in-process.
 
+Seed 0 at level 3, the natural Rung 0 stop of Phase 3, now heals and completes with every action
+checked against ground truth. The heal fixture suite covers each mutation on its own.
+
 Mutation scenarios run the complete download_report workflow from the unmutated sign-in
 page, with one extra navigate step after ``open_reports`` that reloads Reports with
 ``?seed=&only=``. The portal applies ``only=`` on every page with an eligible target, and
@@ -17,6 +20,7 @@ from pathlib import Path
 import pytest
 from playwright.async_api import Browser, Page
 
+from benchmarks.chaos.heal_cases import load_workflows, run_with_ground_truth
 from mendwork.adapters.workflow_yaml.codec import WorkflowYamlCodec
 from mendwork.engine.domain.documents import parse_workflow_document, workflow_document
 from mendwork.engine.domain.events import TargetResolvedEvent
@@ -157,70 +161,35 @@ async def test_regenerated_ids_resolve_through_a_lower_ranked_selector(
     assert [report.outcome for report in event.evidence.selectors] == ["none", "hit", "hit", "none"]
 
 
-async def test_a_synonym_rename_stops_as_a_drifted_match_with_both_names(
+async def test_seed_0_at_level_3_heals_the_download_button_that_became_a_link(
     browser: Browser, portal_url: str, tmp_path: Path
 ) -> None:
-    outcome, chaos = await replay_with_chaos(browser, portal_url, tmp_path, 12, "synonym_rename")
+    workflow = load_workflows()["download_report"]
+    inputs = {"portal_url": f"{portal_url}index.html?seed=0&level=3", "account_email": DEMO_EMAIL}
 
-    assert applied(chaos) == [("synonym_rename", "reports.download_csv")]
-    step = outcome.step("download_csv")
-    assert step.error is not None
-    assert step.error.type == "TargetDrifted"
-    recorded = step.error.context["recorded"]
-    found = step.error.context["found"]
-    assert isinstance(recorded, dict)
-    assert isinstance(found, dict)
-    assert recorded["name"] == "Download CSV"
-    assert found["name"] != "Download CSV"
-    assert f'"{found["name"]}"' in chaos.applied[0].description
-    assert not step.action_performed
-    assert chaos.wrong_actions == ()
-
-
-async def test_a_dangerous_rename_stops_before_any_click(
-    browser: Browser, portal_url: str, tmp_path: Path
-) -> None:
-    outcome, chaos = await replay_with_chaos(browser, portal_url, tmp_path, 1, "dangerous_rename")
-
-    assert applied(chaos) == [("dangerous_rename", "reports.download_csv")]
-    step = outcome.step("download_csv")
-    assert step.error is not None
-    assert step.error.type == "TargetDrifted"
-    found = step.error.context["found"]
-    assert isinstance(found, dict)
-    assert found["name"] == "Delete data"
-    assert step.error.context["differences"] == ["accessible_name"]
-    assert not step.action_performed
-    assert step.artifacts.download is None
-    assert chaos.wrong_actions == ()
-
-
-async def test_two_plausible_copies_are_ambiguous_and_neither_is_clicked(
-    browser: Browser, portal_url: str, tmp_path: Path
-) -> None:
-    outcome, chaos = await replay_with_chaos(
-        browser, portal_url, tmp_path, 1, "duplicate_plausible"
+    replay = await run_with_ground_truth(
+        browser,
+        workflow.version,
+        inputs,
+        workflow.targets,
+        tmp_path,
+        settings=replay_settings(),
+        signed_in=False,
     )
 
-    assert applied(chaos) == [("duplicate_plausible", "reports.download_csv")]
-    step = outcome.step("download_csv")
-    assert step.error is not None
-    assert (step.error.type, step.error.context["reason"]) == ("AmbiguousTarget", "several_matches")
-    assert chaos.wrong_actions == ()
-
-
-async def test_a_removed_control_is_not_found_and_nothing_is_clicked(
-    browser: Browser, portal_url: str, tmp_path: Path
-) -> None:
-    outcome, chaos = await replay_with_chaos(
-        browser, portal_url, tmp_path, 1, "remove_target", step_timeout_ms=1_500
-    )
-
-    assert applied(chaos) == [("remove_target", "reports.download_csv")]
-    step = outcome.step("download_csv")
-    assert step.error is not None
-    assert step.error.type == "TargetNotFound"
-    assert chaos.wrong_actions == ()
+    assert replay.run.status is RunStatus.SUCCEEDED, replay.run.error
+    assert replay.wrong() == ()
+    checked = [check for check in replay.checks if check.target_key is not None]
+    assert [check.correct for check in checked] == [True] * 8
+    step = replay.step("download_csv")
+    assert step.heal is not None
+    assert step.heal.healed_rung == 2
+    assert step.heal.attempts[-1].kind_change == "button → link"
+    download = step.artifacts.download
+    assert download is not None
+    lines = (await read(replay.run_directory / download)).splitlines()
+    assert lines[0] == CSV_HEADER
+    assert len(lines) - 1 == 14
 
 
 @pytest.mark.parametrize(

@@ -13,6 +13,7 @@ from mendwork.adapters.system.clock import SystemClock
 from mendwork.adapters.system.randomness import SystemRandomSource
 from mendwork.adapters.system.run_ids import TimestampRunIds
 from mendwork.adapters.system.timer import AsyncioTimer
+from mendwork.engine.healing.config import FeatureWeights, HealingConfig
 from mendwork.engine.ports.browser import BrowserLauncher
 from mendwork.engine.ports.events import EventSink
 from mendwork.engine.recording.config import RecordingConfig
@@ -38,6 +39,26 @@ def replay_config(settings: Settings) -> ReplayConfig:
             multiplier=settings.retry_backoff_multiplier,
             jitter_ratio=settings.retry_jitter_ratio,
         ),
+        healing=healing_config(settings),
+    )
+
+
+def healing_config(settings: Settings) -> HealingConfig:
+    """The heal ladder's configuration, taken from Settings, with the risk vocabulary."""
+    return HealingConfig(
+        weights=FeatureWeights.model_validate(
+            {feature.value: weight for feature, weight in settings.heal_weights().items()}
+        ),
+        accept_threshold=settings.heal_accept_threshold,
+        accept_margin=settings.heal_accept_margin,
+        name_similarity_floor=settings.heal_name_similarity_floor,
+        position_scale=settings.heal_position_scale,
+        candidates_max=settings.heal_candidates_max,
+        max_attempts=settings.heal_max_attempts,
+        authentication_max_attempts=settings.heal_authentication_max_attempts,
+        report_candidates=settings.heal_report_candidates,
+        timeout_ms=settings.heal_timeout_ms,
+        vocabulary=risk_vocabulary(settings),
     )
 
 

@@ -11,6 +11,7 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from pydantic import BaseModel, ConfigDict
 
+from mendwork.adapters.browser_playwright.candidates import scan_candidates
 from mendwork.adapters.browser_playwright.errors import (
     action_error,
     browser_closed,
@@ -19,6 +20,7 @@ from mendwork.adapters.browser_playwright.errors import (
     navigation_error,
     page_read_error,
 )
+from mendwork.adapters.browser_playwright.facts import FACTS_REQUEST, FactsReply
 from mendwork.adapters.browser_playwright.identity import identify, read_identity, same_node
 from mendwork.adapters.browser_playwright.locators import build_locator
 from mendwork.adapters.browser_playwright.observations import Observations
@@ -27,7 +29,7 @@ from mendwork.adapters.browser_playwright.scripts import PageScripts
 from mendwork.adapters.browser_playwright.tracing import TraceRecorder
 from mendwork.engine.domain.checkpoints import ResponseReceived, UrlMatches
 from mendwork.engine.domain.selectors import Selector
-from mendwork.engine.errors import MendworkError
+from mendwork.engine.errors import MendworkError, TargetNotFound
 from mendwork.engine.ports.browser_types import (
     Actionability,
     DomEpoch,
@@ -47,6 +49,8 @@ from mendwork.engine.ports.browser_types import (
     WatchId,
     WatchKind,
 )
+from mendwork.engine.ports.candidate_types import CandidateQuery, CandidateScan
+from mendwork.engine.ports.element_types import ElementFacts
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 
 _DETACHED: Final = Actionability(attached=False, visible=False, enabled=False, editable=False)
@@ -204,6 +208,13 @@ class PlaywrightSession:
                 raise browser_closed(error) from error
             return _GONE
 
+    async def element_facts(self, element: ElementRef) -> ElementFacts:
+        raw = await self._evaluate_on(element, self._scripts.element_facts, FACTS_REQUEST)
+        return FactsReply.model_validate(raw).facts()
+
+    async def scan_candidates(self, query: CandidateQuery) -> CandidateScan:
+        return await scan_candidates(self._page, self._scripts, query, self._pin)
+
     async def actionability(self, element: ElementRef) -> Actionability:
         handle = self._handle(element)
         try:
@@ -353,6 +364,14 @@ class PlaywrightSession:
         await self._resume_tracing(1)
         return await self._tracer.export(scrubber)
 
+    def pinned_handle(self, element: ElementRef) -> ElementHandle:
+        """The Playwright handle behind a pinned element.
+
+        For test harnesses that compare the element an action is about to reach with ground
+        truth; the engine only ever sees element refs.
+        """
+        return self._handle(element)
+
     # Internals.
 
     def _pin(self, handle: ElementHandle) -> ElementRef:
@@ -366,6 +385,16 @@ class PlaywrightSession:
         if handle is None:
             raise MendworkError("an element was used after it was released", element=element)
         return handle
+
+    async def _evaluate_on(self, element: ElementRef, script: str, argument: object) -> object:
+        try:
+            return await self._handle(element).evaluate(script, argument)
+        except PlaywrightError as error:
+            if is_closed(error):
+                raise browser_closed(error) from error
+            raise TargetNotFound(
+                "the element is no longer on the page", reason="detached"
+            ) from error
 
     async def _state(self, request: dict[str, object], deadline: float) -> _PageStateReply:
         try:

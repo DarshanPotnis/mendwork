@@ -30,6 +30,8 @@ from mendwork.engine.ports.browser_types import (
     WatchId,
     WatchKind,
 )
+from mendwork.engine.ports.candidate_types import CandidateQuery, CandidateScan
+from mendwork.engine.ports.element_types import ElementFacts
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 
 
@@ -90,6 +92,22 @@ class BrowserPort(Protocol):
 
         With ``confirm``, Playwright's own role locator must agree with the computed role
         and name for ``confirmed`` to be True.
+        """
+        ...
+
+    async def element_facts(self, element: ElementRef) -> ElementFacts:
+        """Facts about a pinned element, never including a field's content.
+
+        Raises TargetNotFound if the element's document was replaced.
+        """
+        ...
+
+    async def scan_candidates(self, query: CandidateQuery) -> CandidateScan:
+        """Pin up to ``query.limit`` visible elements the action could receive, in document
+        order, with each one's identity (unconfirmed) and facts, and count every such element.
+
+        The caller releases the pinned elements. A scan taken while the document is replaced
+        may be empty; the caller's stability check discards it.
         """
         ...
 
