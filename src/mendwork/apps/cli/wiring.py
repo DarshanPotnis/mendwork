@@ -3,24 +3,47 @@
 Shared by ``mendwork run`` and the benchmark scripts, so both replay exactly the same way.
 """
 
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Final
+
+import httpx
 
 from mendwork.adapters.artifacts_local.store import LocalArtifactStore
 from mendwork.adapters.browser_playwright.launcher import LaunchOptions, SessionOptions
 from mendwork.adapters.browser_playwright.recording.launcher import RecordingOptions
+from mendwork.adapters.models.breaker import CircuitBreaker
+from mendwork.adapters.models.gemini import GeminiOptions, GeminiWire
+from mendwork.adapters.models.http_model import HttpChoiceModel, WireFormat
+from mendwork.adapters.models.ollama import OllamaOptions, OllamaWire
+from mendwork.adapters.models.openai_compatible import (
+    OpenAICompatibleOptions,
+    OpenAICompatibleWire,
+)
+from mendwork.adapters.models.transport import ModelHttpClient, TransportPolicy
 from mendwork.adapters.secrets_env.resolver import EnvSecretResolver
 from mendwork.adapters.system.clock import SystemClock
 from mendwork.adapters.system.randomness import SystemRandomSource
 from mendwork.adapters.system.run_ids import TimestampRunIds
 from mendwork.adapters.system.timer import AsyncioTimer
+from mendwork.adapters.usage_fs.ledger import FileUsageLedger
+from mendwork.engine.errors import MendworkError
 from mendwork.engine.healing.config import FeatureWeights, HealingConfig
+from mendwork.engine.healing.model_rung import ModelChoiceConfig, ModelRung
 from mendwork.engine.ports.browser import BrowserLauncher
 from mendwork.engine.ports.events import EventSink
+from mendwork.engine.ports.model import ModelPort
 from mendwork.engine.recording.config import RecordingConfig
 from mendwork.engine.replay.config import ReplayConfig, RetryPolicy
 from mendwork.engine.replay.replayer import Replayer
+from mendwork.engine.safety.budgets import BudgetLimits
 from mendwork.engine.safety.risk import RiskVocabulary
 from mendwork.settings import Settings
+from mendwork.settings_model import ModelProvider
+
+USAGE_DIRECTORY: Final = "usage"
+"""The daily model-call ledger's directory, inside the artifacts directory."""
 
 
 def replay_config(settings: Settings) -> ReplayConfig:
@@ -123,6 +146,135 @@ def record_launch_options(settings: Settings, *, slow_mo_ms: int | None) -> Laun
     )
 
 
+@asynccontextmanager
+async def model_client(settings: Settings) -> AsyncIterator[httpx.AsyncClient | None]:
+    """An HTTP client for the configured model provider, or None when no model is configured.
+
+    Creating the client opens no connection: a run that never reaches Rung 3 sends nothing.
+    """
+    if settings.model_provider is ModelProvider.NONE:
+        yield None
+        return
+    async with httpx.AsyncClient() as client:
+        yield client
+
+
+def model_choice_config(settings: Settings) -> ModelChoiceConfig:
+    """How Rung 3 asks the configured model."""
+    return ModelChoiceConfig(
+        candidates_k=settings.model_candidates_k,
+        timeout_ms=settings.model_timeout_ms,
+        provider=settings.model_provider.value,
+        model=settings.model_name or settings.model_provider.value,
+    )
+
+
+def budget_limits(settings: Settings) -> BudgetLimits:
+    """The model-call budgets, taken from Settings."""
+    return BudgetLimits(
+        per_run=settings.model_max_calls_per_run, per_day=settings.model_max_calls_per_day
+    )
+
+
+def model_rung(
+    settings: Settings, *, client: httpx.AsyncClient, ledger_directory: Path
+) -> ModelRung | None:
+    """Rung 3 with the configured provider, or None when no model is configured."""
+    model = chat_model(settings, client=client)
+    if model is None:
+        return None
+    return ModelRung(
+        model=model,
+        config=model_choice_config(settings),
+        limits=budget_limits(settings),
+        ledger=FileUsageLedger(ledger_directory),
+    )
+
+
+def chat_model(settings: Settings, *, client: httpx.AsyncClient) -> ModelPort | None:
+    """The configured provider as a ModelPort, or None when no model is configured."""
+    name = settings.model_name
+    if settings.model_provider is ModelProvider.NONE or name is None:
+        return None
+    timer = AsyncioTimer()
+    transport = ModelHttpClient(
+        client=client,
+        policy=TransportPolicy(
+            max_attempts=settings.model_max_attempts,
+            retry=RetryPolicy(
+                max_attempts=settings.model_max_attempts,
+                initial_delay_ms=settings.model_retry_initial_delay_ms,
+                max_delay_ms=settings.model_retry_max_delay_ms,
+                multiplier=settings.retry_backoff_multiplier,
+                jitter_ratio=settings.retry_jitter_ratio,
+            ),
+            max_response_bytes=settings.model_max_response_bytes,
+        ),
+        timer=timer,
+        randomness=SystemRandomSource(),
+    )
+    return HttpChoiceModel(
+        wire=wire_format(settings, name),
+        model=name,
+        transport=transport,
+        breaker=CircuitBreaker(
+            failure_threshold=settings.model_breaker_failures,
+            reset_ms=settings.model_breaker_reset_ms,
+            timer=timer,
+        ),
+        price=settings.model_prices.get(name),
+        timer=timer,
+    )
+
+
+def wire_format(settings: Settings, name: str) -> WireFormat:
+    """The configured provider's request and response shapes."""
+    endpoint = settings.model_endpoint()
+    provider = settings.model_provider
+    if endpoint is None or provider is ModelProvider.NONE:
+        raise MendworkError("no model provider is configured", provider=provider.value)
+    match provider:
+        case ModelProvider.OLLAMA:
+            return OllamaWire(
+                OllamaOptions(
+                    base_url=endpoint,
+                    model=name,
+                    temperature=settings.model_temperature,
+                    seed=settings.model_seed,
+                    max_output_tokens=settings.model_max_output_tokens,
+                    context_tokens=settings.model_context_tokens,
+                    keep_alive=settings.model_keep_alive,
+                    think=settings.model_think,
+                )
+            )
+        case ModelProvider.GEMINI:
+            if settings.model_api_key is None:
+                raise MendworkError("the Gemini provider needs MENDWORK_MODEL_API_KEY")
+            return GeminiWire(
+                GeminiOptions(
+                    base_url=endpoint,
+                    model=name,
+                    api_key=settings.model_api_key,
+                    temperature=settings.model_temperature,
+                    seed=settings.model_seed,
+                    max_output_tokens=settings.model_max_output_tokens,
+                    think=settings.model_think,
+                )
+            )
+        case ModelProvider.OPENAI_COMPATIBLE:
+            return OpenAICompatibleWire(
+                OpenAICompatibleOptions(
+                    base_url=endpoint,
+                    model=name,
+                    api_key=settings.model_api_key,
+                    temperature=settings.model_temperature,
+                    seed=settings.model_seed,
+                    max_output_tokens=settings.model_max_output_tokens,
+                    local=settings.model_local,
+                )
+            )
+
+
 def build_replayer(
     settings: Settings,
     *,
@@ -130,6 +282,7 @@ def build_replayer(
     artifacts: LocalArtifactStore,
     events: EventSink,
     environ: Mapping[str, str],
+    model: ModelRung | None = None,
 ) -> Replayer:
     """A Replayer on the real clock, timer, randomness, and environment secrets."""
     clock = SystemClock()
@@ -143,4 +296,5 @@ def build_replayer(
         randomness=SystemRandomSource(),
         run_ids=TimestampRunIds(clock),
         config=replay_config(settings),
+        model=model,
     )

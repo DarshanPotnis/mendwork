@@ -12,6 +12,7 @@ from typing import Final
 
 import structlog
 
+from mendwork.engine.domain.model_evidence import ModelUsageTotals
 from mendwork.engine.domain.runs import (
     STOPPING_STATUSES,
     ErrorCategory,
@@ -23,6 +24,7 @@ from mendwork.engine.domain.runs import (
 )
 from mendwork.engine.domain.workflow import WorkflowVersion
 from mendwork.engine.errors import InfrastructureError, RunTimedOut, SecretUnavailable
+from mendwork.engine.healing.model_rung import ModelRung
 from mendwork.engine.ports.artifacts import ArtifactStore
 from mendwork.engine.ports.browser import BrowserLauncher
 from mendwork.engine.ports.clock import Clock
@@ -63,6 +65,7 @@ class Replayer:
         randomness: RandomSource,
         run_ids: RunIdGenerator,
         config: ReplayConfig,
+        model: ModelRung | None = None,
     ) -> None:
         self._launcher = launcher
         self._artifacts = artifacts
@@ -73,6 +76,7 @@ class Replayer:
         self._randomness = randomness
         self._run_ids = run_ids
         self._config = config
+        self._model = model
 
     async def run(self, workflow: WorkflowVersion, supplied_inputs: Mapping[str, str]) -> Run:
         """Replay a workflow version with the given inputs.
@@ -97,6 +101,7 @@ class Replayer:
         started = self._timer.monotonic()
         run_deadline = Deadline.after(self._timer, self._config.run_timeout_ms)
         emitter = RunEmitter(self._events, self._clock, run_id)
+        chooser = self._model.for_run(self._clock) if self._model is not None else None
         record = Run(
             run_id=run_id,
             workflow_id=workflow.workflow_id,
@@ -129,6 +134,7 @@ class Replayer:
                     run_id=run_id,
                     run_deadline=run_deadline,
                     log=log,
+                    chooser=chooser,
                 )
                 timeout = await self._run_steps(workflow, runner, run_deadline, results)
                 if timeout is not None:
@@ -143,7 +149,8 @@ class Replayer:
             )
             unexpected = failure
 
-        finished = self._finish(record, workflow, results, error, scrubber, started)
+        usage = chooser.budget.totals if chooser is not None else ModelUsageTotals()
+        finished = self._finish(record, workflow, results, error, scrubber, started, usage)
         await self._write(finished)
         await emitter.run_finished(finished)
         log.info("run_finished", status=finished.status.value, duration_ms=finished.duration_ms)
@@ -195,6 +202,7 @@ class Replayer:
         error: ErrorReport | None,
         scrubber: SecretScrubber,
         started: float,
+        model_usage: ModelUsageTotals,
     ) -> Run:
         stopped = next((result for result in results if result.status in STOPPING_STATUSES), None)
         final_error = error or (stopped.error if stopped is not None else None)
@@ -220,6 +228,7 @@ class Replayer:
             secrets=record.secrets,
             steps=_not_run(workflow, results),
             error=final_error,
+            model_usage=model_usage,
         )
 
     async def _write(self, run: Run) -> None:

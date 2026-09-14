@@ -76,13 +76,13 @@ def test_every_misspelled_variable_is_reported(monkeypatch: pytest.MonkeyPatch) 
 def test_a_variable_with_no_close_match_lists_the_valid_names(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("MENDWORK_DATABASE_URL", "postgres://localhost/mendwork")
+    monkeypatch.setenv("MENDWORK_QUIXOTIC_ZEPHYR", "1")
 
     with pytest.raises(ValidationError) as caught:
         Settings(_env_file=None)
 
     message = str(caught.value)
-    assert "MENDWORK_DATABASE_URL" in message
+    assert "MENDWORK_QUIXOTIC_ZEPHYR" in message
     assert "valid names are MENDWORK_ARTIFACTS_DIR, " in message
     assert "MENDWORK_LOG_LEVEL" in message
 

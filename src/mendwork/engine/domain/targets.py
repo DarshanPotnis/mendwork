@@ -59,5 +59,5 @@ class TargetEvidence(DomainModel):
     """One identity per distinct element, when the hits disagreed."""
     differences: tuple[str, ...] = ()
     """How the found identity differs from the recorded one, for a drifted match."""
-    healed_rung: int | None = Field(default=None, ge=1, le=2)
+    healed_rung: int | None = Field(default=None, ge=1, le=3)
     """The rung that found the target, when the recorded selectors did not."""

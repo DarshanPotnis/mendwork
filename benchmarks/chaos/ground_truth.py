@@ -38,7 +38,7 @@ from mendwork.engine.ports.browser_types import (
     WatchId,
     WatchKind,
 )
-from mendwork.engine.ports.candidate_types import CandidateQuery, CandidateScan
+from mendwork.engine.ports.candidate_types import CandidateQuery, CandidateScan, LiveCandidate
 from mendwork.engine.ports.element_types import ElementFacts
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 
@@ -52,6 +52,18 @@ _IS_TARGET: Final = """([key, element]) => {
     return chaos.locate(key) === element;
   } catch {
     return false;
+  }
+}"""
+_TARGET_INDEX: Final = """([key, elements]) => {
+  const chaos = window.__chaos;
+  if (chaos === undefined || chaos.pageId !== key.split(".")[0]) {
+    return -1;
+  }
+  try {
+    const target = chaos.locate(key);
+    return elements.findIndex((element) => element === target);
+  } catch {
+    return -1;
   }
 }"""
 _WRONG_ACTIONS: Final = """() =>
@@ -74,11 +86,14 @@ class ActionCheck:
 
 
 class StepTracker:
-    """An EventSink that keeps every event and knows which step is running."""
+    """An EventSink that keeps every event, knows which step is running, and, for benchmark models,
+    the element that really is each step's target at its latest candidate scan."""
 
     def __init__(self) -> None:
         self.events: list[RunEvent] = []
         self.current: str | None = None
+        self.truths: dict[str, LiveCandidate | None] = {}
+        self.scans: dict[str, tuple[LiveCandidate, ...]] = {}
 
     async def emit(self, event: RunEvent) -> None:
         self.events.append(event)
@@ -164,7 +179,16 @@ class GroundTruthSession:
         return await self._inner.element_facts(element)
 
     async def scan_candidates(self, query: CandidateQuery) -> CandidateScan:
-        return await self._inner.scan_candidates(query)
+        scan = await self._inner.scan_candidates(query)
+        step_id = self._tracker.current
+        key = self._targets.get(step_id) if step_id is not None else None
+        if step_id is not None and key is not None:
+            handles = [self._inner.pinned_handle(item.element) for item in scan.candidates]
+            index = await self._inner.page.evaluate(_TARGET_INDEX, [key, handles])
+            found = scan.candidates[index] if isinstance(index, int) and index >= 0 else None
+            self._tracker.truths[step_id] = found
+            self._tracker.scans[step_id] = scan.candidates
+        return scan
 
     async def actionability(self, element: ElementRef) -> Actionability:
         return await self._inner.actionability(element)

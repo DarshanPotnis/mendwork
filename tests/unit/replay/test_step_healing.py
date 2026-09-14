@@ -593,7 +593,7 @@ async def test_a_replayed_step_whose_verified_heal_is_gone_cannot_be_replayed() 
     )
     target = step(click())
     healer, state = healer_for(page, target)
-    state.remember_verified(target.id, ("something", "else"))
+    state.remember_verified(target.id, ("something", "else"), 2)
 
     with pytest.raises(HealAbstained) as caught:
         await healer.reuse(progress_for(target), not_found(), Deadline.after(page.timer, 1_000))

@@ -16,7 +16,8 @@ level 3).
 
 Ground truth comes from ``window.__chaos`` at the moment of every action (see ground_truth).
 A heal case must succeed with every action on the real target; an abstain case must abstain at
-its step with nothing acted on there. Any wrong action is reported, and fails the suite.
+its step with nothing acted on there. Any wrong action is reported, and fails the suite. With a
+model (see models), Rung 3 runs where Rung 2 declines, under the same checks.
 """
 
 import asyncio
@@ -27,6 +28,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
+import httpx
 from playwright.async_api import Browser
 from pydantic import JsonValue
 
@@ -37,6 +39,7 @@ from benchmarks.chaos.ground_truth import (
     StepTracker,
 )
 from benchmarks.chaos.heal_pairs import ABSTAIN, HEAL, Category, HealPairTable
+from benchmarks.chaos.models import Asked, ModelMode, model_rung_for
 from benchmarks.chaos.workflow_targets import load_workflow_targets
 from mendwork.adapters.artifacts_local.store import LocalArtifactStore
 from mendwork.adapters.browser_playwright.launcher import PlaywrightLauncher
@@ -67,6 +70,7 @@ NOT_FOUND_STEP_TIMEOUT_MS: Final = 1_500
 CHAOS_STEP_ID: Final = "open_mutated_page"
 CHAOS_INPUT: Final = "chaos_url"
 SUITE_CONCURRENCY: Final = 4
+USAGE_DIRECTORY: Final = "usage"
 
 
 class Verdict(StrEnum):
@@ -110,7 +114,8 @@ class HealCase:
 
 @dataclass(frozen=True, slots=True)
 class CaseOutcome:
-    """What a case did: its verdict, the rung that found its step's target, and any wrong action."""
+    """What a case did: its verdict, the rung that found its step's target, any wrong action, and
+    how many model calls it made."""
 
     case: HealCase
     verdict: Verdict
@@ -118,11 +123,15 @@ class CaseOutcome:
     reason: str | None
     wrong: tuple[str, ...]
     detail: str
+    model_calls: int = 0
 
     def summary(self) -> str:
         """One line a person can compare between runs."""
         rung = "-" if self.rung is None else str(self.rung)
-        return f"{self.case.id}: {self.verdict} rung={rung} reason={self.reason or '-'}"
+        return (
+            f"{self.case.id}: {self.verdict} rung={rung} reason={self.reason or '-'} "
+            f"calls={self.model_calls}"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +143,7 @@ class GroundTruthRun:
     checks: tuple[ActionCheck, ...]
     wrong_actions: tuple[str, ...]
     run_directory: Path
+    tracker: StepTracker
 
     def step(self, step_id: str) -> StepResult:
         return next(step for step in self.run.steps if step.step_id == step_id)
@@ -261,8 +271,15 @@ async def run_with_ground_truth(
     *,
     settings: Settings,
     signed_in: bool,
+    model: ModelMode = "none",
+    abstain_steps: frozenset[str] = frozenset(),
+    client: httpx.AsyncClient | None = None,
+    asked: list[Asked] | None = None,
 ) -> GroundTruthRun:
-    """Replay a workflow as ``mendwork run`` would, checking every action against ground truth."""
+    """Replay a workflow as ``mendwork run`` would, checking every action against ground truth.
+
+    ``asked``, when given, collects every model call with the lines that really were the target.
+    """
     tracker = StepTracker()
     checks: list[ActionCheck] = []
     wrong_actions: list[str] = []
@@ -275,6 +292,15 @@ async def run_with_ground_truth(
         artifacts=artifacts,
         events=tracker,
         environ={secret_variable_name(SecretName("portal_password")): DEMO_PASSWORD},
+        model=model_rung_for(
+            model,
+            settings,
+            tracker=tracker,
+            abstain_steps=abstain_steps,
+            ledger_directory=directory / USAGE_DIRECTORY,
+            client=client,
+            asked=asked,
+        ),
     )
     run = await replayer.run(workflow, inputs)
     return GroundTruthRun(
@@ -283,6 +309,7 @@ async def run_with_ground_truth(
         tuple(checks),
         tuple(wrong_actions),
         artifacts.run_directory(run.run_id),
+        tracker,
     )
 
 
@@ -292,6 +319,10 @@ async def run_case(
     case: HealCase,
     workflows: Mapping[str, ExampleWorkflow],
     directory: Path,
+    *,
+    model: ModelMode = "none",
+    client: httpx.AsyncClient | None = None,
+    asked: list[Asked] | None = None,
 ) -> CaseOutcome:
     """Replay one case and classify what happened."""
     workflow = workflows[case.workflow_id]
@@ -304,6 +335,10 @@ async def run_case(
         directory,
         settings=case_settings(case),
         signed_in=case.page != "login",
+        model=model,
+        abstain_steps=frozenset({case.target_step}) if case.category == ABSTAIN else frozenset(),
+        client=client,
+        asked=asked,
     )
     return classify(case, replay)
 
@@ -316,13 +351,23 @@ async def run_cases(
     directory: Path,
     *,
     concurrency: int = SUITE_CONCURRENCY,
+    model: ModelMode = "none",
+    client: httpx.AsyncClient | None = None,
 ) -> dict[str, CaseOutcome]:
     """Every case, each in its own browser context, at most ``concurrency`` at a time."""
     limit = asyncio.Semaphore(concurrency)
 
     async def bounded(case: HealCase) -> CaseOutcome:
         async with limit:
-            return await run_case(browser, portal_url, case, workflows, directory / case.id)
+            return await run_case(
+                browser,
+                portal_url,
+                case,
+                workflows,
+                directory / case.id,
+                model=model,
+                client=client,
+            )
 
     outcomes = await asyncio.gather(*(bounded(case) for case in cases))
     return {outcome.case.id: outcome for outcome in outcomes}
@@ -353,15 +398,21 @@ def classify(case: HealCase, replay: GroundTruthRun) -> CaseOutcome:
         verdict = Verdict.ABSTAINED
     else:
         verdict = Verdict.FAILED
-    return CaseOutcome(case, verdict, rung, reason, wrong, detail)
+    return CaseOutcome(
+        case, verdict, rung, reason, wrong, detail, model_calls=replay.run.model_usage.calls
+    )
 
 
 def render_table(outcomes: Mapping[str, CaseOutcome]) -> str:
-    """Per mutation: cases, resolved, abstained, wrong, failed, and the rungs that resolved them."""
+    """Per mutation: cases, resolved, abstained, wrong, failed, the rungs that resolved them, and
+    model calls."""
     by_mutation: dict[tuple[str, str], list[CaseOutcome]] = {}
     for outcome in outcomes.values():
         by_mutation.setdefault((outcome.case.category, outcome.case.mutation), []).append(outcome)
-    header = ("mutation", "category", "cases", "resolved", "abstained", "wrong", "failed", "rungs")
+    header = (
+        "mutation", "category", "cases", "resolved", "abstained", "wrong", "failed", "rungs",
+        "calls",
+    )  # fmt: skip
     rows = [header]
     for (category, mutation), group in sorted(by_mutation.items()):
         verdicts = Counter(outcome.verdict for outcome in group)
@@ -376,6 +427,7 @@ def render_table(outcomes: Mapping[str, CaseOutcome]) -> str:
                 str(verdicts[Verdict.WRONG]),
                 str(verdicts[Verdict.FAILED]),
                 " ".join(f"r{rung} x{count}" for rung, count in sorted(rungs.items())) or "-",
+                str(sum(outcome.model_calls for outcome in group)),
             )
         )
     total = Counter(outcome.verdict for outcome in outcomes.values())
@@ -389,6 +441,7 @@ def render_table(outcomes: Mapping[str, CaseOutcome]) -> str:
             str(total[Verdict.WRONG]),
             str(total[Verdict.FAILED]),
             "",
+            str(sum(outcome.model_calls for outcome in outcomes.values())),
         )
     )
     widths = [max(len(row[column]) for row in rows) for column in range(len(header))]
@@ -399,7 +452,7 @@ def render_table(outcomes: Mapping[str, CaseOutcome]) -> str:
 
 
 def unresolved_heals(outcomes: Mapping[str, CaseOutcome]) -> list[CaseOutcome]:
-    """heal_expected cases the ladder did not resolve: the input for Rung 3."""
+    """heal_expected cases the ladder did not resolve."""
     return [
         outcome
         for outcome in outcomes.values()

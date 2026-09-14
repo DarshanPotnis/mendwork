@@ -10,7 +10,9 @@ drifted Rung 0 match, a Rung 1 hit), which join as candidates like any other. Th
 - every other candidate is scored and checked against the safety rules, and the accept rule
   decides; the winner's identity must then be confirmed by Playwright.
 
-Every element but an accepted winner is released before returning.
+Every element but an accepted winner is released before returning, except when a model is
+configured and the ranking declined in a way Rung 3 takes up: then the whole ranking stays
+pinned for Rung 3, which releases it.
 """
 
 from collections.abc import Sequence
@@ -35,10 +37,11 @@ from mendwork.engine.healing.context import (
     LadderContext,
     scored_candidate,
 )
+from mendwork.engine.healing.eligibility import takes_up
 from mendwork.engine.healing.scoring import ScoredElement, rank, score_candidate
-from mendwork.engine.healing.snapshot import read_consistently
+from mendwork.engine.healing.snapshot import read_consistently_at
 from mendwork.engine.ports.browser import BrowserPort
-from mendwork.engine.ports.browser_types import ElementIdentity, ElementRef
+from mendwork.engine.ports.browser_types import DomEpoch, ElementIdentity, ElementRef
 from mendwork.engine.ports.candidate_types import CandidateQuery, CandidateScan, LiveCandidate
 from mendwork.engine.safety.heal_kinds import compare_kinds
 
@@ -47,11 +50,21 @@ Pooled = tuple[LiveCandidate, CandidateOrigin]
 
 
 @dataclass(frozen=True, slots=True)
+class Rung2Decline:
+    """A declined ranking kept pinned for Rung 3, with the report and the epoch it was read at."""
+
+    ranked: tuple[ScoredElement, ...]
+    report: HealAttemptReport
+    epoch: DomEpoch
+
+
+@dataclass(frozen=True, slots=True)
 class Rung2Result:
-    """Rung 2's report, and its accepted heal if any."""
+    """Rung 2's report, and its accepted heal or the ranking it leaves to Rung 3, if any."""
 
     report: HealAttemptReport
     accepted: AcceptedHeal | None = None
+    declined: Rung2Decline | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,7 +93,7 @@ async def run_rung2(
     async def release(pool: _Pool) -> None:
         await browser.release(pool.elements())
 
-    pool = await read_consistently(
+    pool, epoch = await read_consistently_at(
         browser,
         request.deadline,
         settle_timeout_ms=context.settle_timeout_ms,
@@ -114,6 +127,12 @@ async def run_rung2(
             ranked = (refused, *ranked[1:])
             decision = Declined(RungOutcome.TOP_REJECTED, decision.runner_up, decision.margin)
     report = _report(context, request, pool.scan.total, ranked, decision, confirmed)
+    if (
+        context.chooser is not None
+        and isinstance(decision, Declined)
+        and takes_up(decision.outcome)
+    ):
+        return Rung2Result(report, declined=Rung2Decline(ranked, report, epoch))
     winner = decision.winner.candidate.element if isinstance(decision, Accepted) else None
     await browser.release(
         [item.candidate.element for item in ranked if item.candidate.element != winner]

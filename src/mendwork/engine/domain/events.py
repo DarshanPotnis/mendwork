@@ -12,8 +12,9 @@ from pydantic import Field
 
 from mendwork.engine.domain.base import DomainModel
 from mendwork.engine.domain.enums import ActionType, RiskLevel, ValueKind
-from mendwork.engine.domain.heals import HealAttemptReport, RecoveryReport
+from mendwork.engine.domain.heals import HealAttemptReport, HealedRung, RecoveryReport
 from mendwork.engine.domain.identifiers import StepIdField, VersionNumber, WorkflowIdField
+from mendwork.engine.domain.model_evidence import ModelUsageTotals
 from mendwork.engine.domain.runs import (
     CheckpointResult,
     ErrorReport,
@@ -76,7 +77,7 @@ class HealVerifiedEvent(_StepEvent):
     """The checkpoints ran after acting on a healed target: the heal is proven or refuted."""
 
     type: Literal["heal_verified"] = "heal_verified"
-    rung: Literal[1, 2]
+    rung: HealedRung
     attempt: int = Field(ge=1)
     passed: bool
     failed_checkpoint: CheckpointResult | None = None
@@ -141,6 +142,8 @@ class RunFinishedEvent(_RunEvent):
     duration_ms: int = Field(ge=0)
     failed_step_id: StepIdField | None = None
     error_type: str | None = None
+    model_usage: ModelUsageTotals = ModelUsageTotals()
+    """Every model call the run made, added up."""
 
 
 RunEvent = Annotated[

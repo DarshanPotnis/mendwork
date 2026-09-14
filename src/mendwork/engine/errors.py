@@ -166,7 +166,21 @@ class RecordingUnusable(MendworkError):
 
 
 class ProviderError(MendworkError):
-    """A model provider call failed, timed out, or returned an unusable response."""
+    """A model provider call failed, timed out, or returned an unusable response.
+
+    ``reason`` names the cause (``timeout``, ``connection``, ``rate_limited``, ``http_status``,
+    ``circuit_open``, ``response_too_large``, ``malformed_response``). When a request was sent,
+    ``usage`` holds the call's ModelUsage.
+    """
+
+
+class ModelOutputInvalid(ProviderError):
+    """The model replied, but not in the one shape Rung 3 accepts.
+
+    ``problem`` says what was wrong in fixed words, and ``excerpt`` holds the start of the
+    reply so a repair request can show the model what it sent. The reply is never put in the
+    message.
+    """
 
 
 class PolicyViolation(MendworkError):
@@ -174,7 +188,10 @@ class PolicyViolation(MendworkError):
 
 
 class BudgetExceeded(MendworkError):
-    """A run or a workspace exhausted its model-call budget."""
+    """A run or a workspace exhausted its model-call budget, or the count could not be read.
+
+    ``scope`` is ``run`` or ``day``, with ``limit`` and, for a day, ``resets_at``.
+    """
 
 
 class _IssuesError(MendworkError):

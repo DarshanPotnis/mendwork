@@ -1,8 +1,9 @@
 """The heal ladder: Rung 0's failure in, an accepted heal or an abstention out.
 
 Each rung is tried only when the one below could not safely proceed, and every rung reports
-what it examined. Rung 3 (a model choosing among Rung 2's candidates) arrives in Phase 6;
-until then, when Rung 2 cannot accept, the ladder abstains with full evidence.
+what it examined. Rung 3, a model choosing among Rung 2's candidates, runs only when a model
+is configured and Rung 2 declined because its closest candidate scored below the threshold or
+led by less than the margin; it never runs after Rung 2 accepted.
 
 Only three Rung 0 outcomes are healed: nothing found, several found, and a drifted identity.
 A page that never stops changing is not healed, because nothing on it can be compared safely;
@@ -31,6 +32,7 @@ from mendwork.engine.errors import (
 from mendwork.engine.healing.context import AcceptedHeal, ClimbRequest, LadderContext
 from mendwork.engine.healing.rung1 import run_rung1
 from mendwork.engine.healing.rung2 import Seed, run_rung2
+from mendwork.engine.healing.rung3 import run_rung3
 from mendwork.engine.replay.reports import target_evidence
 
 HEALABLE_DRIFT: Final = "identity_changed"
@@ -50,6 +52,8 @@ class ClimbResult:
     reports: tuple[HealAttemptReport, ...]
     accepted: AcceptedHeal | None = None
     abstention: AbstentionReason | None = None
+    deciding: HealAttemptReport | None = None
+    """The report whose evidence explains the abstention; the last report when None."""
 
 
 def is_healable(error: MendworkError) -> bool:
@@ -77,7 +81,7 @@ def rung0_report(failure: MendworkError, attempt: int) -> HealAttemptReport:
 async def climb(
     context: LadderContext, request: ClimbRequest, failure: MendworkError
 ) -> ClimbResult:
-    """Rungs 1 and 2 after a Rung 0 failure."""
+    """Rungs 1, 2, and (when a model is configured) 3 after a Rung 0 failure."""
     reports = [rung0_report(failure, request.attempt)]
     seeds: list[Seed] = []
     drifted = _drifted_selector(request.fingerprint, reports[0])
@@ -103,7 +107,22 @@ async def climb(
     reports.append(rung2.report)
     if rung2.accepted is not None:
         return ClimbResult(tuple(reports), accepted=rung2.accepted)
-    return ClimbResult(tuple(reports), abstention=_ABSTENTIONS[rung2.report.outcome])
+    rung2_abstention = ClimbResult(
+        tuple(reports),
+        abstention=_ABSTENTIONS[rung2.report.outcome],
+        deciding=rung2.report,
+    )
+    if rung2.declined is None:
+        return rung2_abstention
+    rung3 = await run_rung3(context, request, rung2.declined)
+    reports.append(rung3.report)
+    if rung3.accepted is not None:
+        return ClimbResult(tuple(reports), accepted=rung3.accepted)
+    if rung3.abstention is None:
+        return ClimbResult(
+            tuple(reports), abstention=rung2_abstention.abstention, deciding=rung2.report
+        )
+    return ClimbResult(tuple(reports), abstention=rung3.abstention, deciding=rung3.report)
 
 
 def _drifted_selector(fingerprint: Fingerprint, report: HealAttemptReport) -> Selector | None:

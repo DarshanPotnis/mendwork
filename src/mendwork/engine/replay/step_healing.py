@@ -14,6 +14,8 @@ For each pass through the ladder:
 5. a heal that fails its checkpoints is excluded. An irreversible step ends in NEEDS_REVIEW
    and is never retried; otherwise, within the attempt limit, the page is restored to its
    last known-good state and Rung 0 runs again on it.
+
+A heal Rung 3's model chose is held to exactly the same gates, action, and checkpoints.
 """
 
 from collections.abc import Callable
@@ -62,6 +64,7 @@ from mendwork.engine.safety.heal_policy import (
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 
 _BEFORE_ACTION_ERRORS = (TargetNotActionable, TargetDrifted, TargetNotFound)
+_MODEL_RUNG = 3
 
 
 class StepHealer:
@@ -126,6 +129,7 @@ class StepHealer:
                 attempt=attempt,
                 excluded=frozenset(excluded),
                 deadline=heal_deadline,
+                heal_actions_used=self._state.heal_actions(step.id),
             )
             result = await climb(self._ladder, request, current)
             current = await self._attempt(progress, result, current, excluded, heal_deadline)
@@ -133,7 +137,10 @@ class StepHealer:
     async def reuse(
         self, progress: StepProgress, failure: MendworkError, deadline: Deadline
     ) -> ActionTarget:
-        """The target of a step replayed during a restore: only its own verified heal will do."""
+        """The target of a step replayed during a restore: only its own verified heal will do.
+
+        A heal Rung 3 verified is found again by its signature, without asking a model.
+        """
         step = progress.step
         remembered = self._state.verified(step.id)
         if remembered is None:
@@ -144,9 +151,10 @@ class StepHealer:
             attempt=1,
             excluded=frozenset(),
             deadline=deadline,
+            reuse=remembered.signature if remembered.rung == _MODEL_RUNG else None,
         )
         accepted = (await climb(self._ladder, request, failure)).accepted
-        if accepted is None or accepted.scored.signature != remembered:
+        if accepted is None or accepted.scored.signature != remembered.signature:
             if accepted is not None:
                 await self._browser.release([accepted.scored.candidate.element])
             raise HealAbstained(
@@ -206,7 +214,7 @@ class StepHealer:
             return failure
         self._state.count_heal_action(step.id)
         await self._record.verified(progress, None)
-        self._state.remember_verified(step.id, accepted.scored.signature)
+        self._state.remember_verified(step.id, accepted.scored.signature, accepted.rung)
         progress.healed_rung = accepted.rung
         self._log.info(
             "heal_verified", step_id=step.id, rung=accepted.rung, score=accepted.scored.score
@@ -300,7 +308,7 @@ class StepHealer:
     def _abstained(self, progress: StepProgress, result: ClimbResult) -> HealAbstained:
         reason = result.abstention or AbstentionReason.NO_CANDIDATES
         progress.abstention = reason
-        deciding = result.reports[-1]
+        deciding = result.deciding or result.reports[-1]
         self._log.info(
             "heal_abstained", step_id=progress.step.id, reason=reason.value, rung=deciding.rung
         )

@@ -8,7 +8,7 @@ import structlog
 from mendwork.engine.domain.steps import Step
 from mendwork.engine.errors import BrowserUnavailable, HealAbstained
 from mendwork.engine.healing.recovery import RestoreRequest, StateRestorer
-from mendwork.engine.healing.run_state import RunHealState, StepStart
+from mendwork.engine.healing.run_state import RunHealState, StepStart, VerifiedHeal
 from mendwork.engine.ports.browser_types import ElementRef, PlainText
 from mendwork.engine.replay.deadlines import Deadline
 from mendwork.engine.safety.secret_scrub import SecretScrubber
@@ -64,11 +64,11 @@ async def test_heal_actions_and_verified_heals_are_remembered_per_step() -> None
 
     state.count_heal_action(target.id)
     state.count_heal_action(target.id)
-    state.remember_verified(target.id, ("signature",))
+    state.remember_verified(target.id, ("signature",), 3)
 
     assert state.heal_actions(target.id) == 2
     assert state.heal_actions(click("other").id) == 0
-    assert state.verified(target.id) == ("signature",)
+    assert state.verified(target.id) == VerifiedHeal(("signature",), 3)
     assert state.verified(click("other").id) is None
 
 

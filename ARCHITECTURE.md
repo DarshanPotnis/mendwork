@@ -24,7 +24,7 @@ These are the rules every design decision is checked against.
 6. **Workflows are versioned and immutable.** A heal creates a new version and never edits the old one, so any version can be rolled back.
 7. **Abstaining is a success.** When the bot isn't sure, stopping and asking is the correct outcome, and it is measured as correct.
 8. **Tenant isolation from day one.** Every stored record belongs to a workspace, and the data layer cannot query without one.
-9. **Bring your own model.** The default is a free local model. Providers are swappable adapters, companies plug in their own keys, and hard budget caps prevent surprise bills.
+9. **Bring your own model.** No model is configured until a person opts in, and the recommended one is a free local model. Providers are swappable adapters, companies plug in their own keys, and hard budget caps prevent surprise bills.
 10. **Measured, not claimed.** The benchmark is a first-class component, not an afterthought.
 
 ---
@@ -109,7 +109,7 @@ mendwork/
 │   │   ├── replay/
 │   │   ├── healing/              # candidates, features, scoring, acceptance, alternates, checks,
 │   │   │                         #   rung1, rung2, ladder, gates, recovery, run state, explain;
-│   │   │                         #   prompt.py in Phase 6
+│   │   │                         #   rung3, prompt, choice parsing, eligibility, model rung
 │   │   ├── verification/
 │   │   ├── safety/               # risk, approvals, egress, budgets, redaction
 │   │   ├── patching/
@@ -118,9 +118,11 @@ mendwork/
 │   │   ├── browser_playwright/   # BrowserPort: launcher, session, Rung 0 primitives, tracing
 │   │   │   ├── recording/        # RecordingBrowser: recorder channel, messages, navigation log, sessions
 │   │   │   └── js/               # page scripts: page state, element identity and keys, field value,
-│   │   │                         #   the recorder and its element facts, candidate extraction;
-│   │   │                         #   later set-of-marks
-│   │   ├── models/               # fake.py, ollama.py, gemini.py, openai_compatible.py, anthropic.py
+│   │   │                         #   the recorder and its element facts, candidate extraction
+│   │   │                         #   (set-of-marks deferred, ADR 0010)
+│   │   ├── models/               # fake, ollama, gemini, openai_compatible (anthropic later);
+│   │   │                         #   shared HTTP transport, circuit breaker, pricing, replies
+│   │   ├── usage_fs/             # UsageLedger: each UTC day's model-call count, in files
 │   │   ├── workflow_yaml/        # strict YAML decoding with line numbers, deterministic encoding
 │   │   ├── storage_fs/           # WorkflowStore on files: one directory per workflow, no-overwrite publish
 │   │   ├── storage_postgres/     # Phase 10
@@ -143,13 +145,15 @@ mendwork/
 │   └── types/                    # type-only .d.ts files (e.g. window.__chaos)
 ├── benchmarks/
 │   ├── chaos/                    # heal_pairs.json and abstain_pairs.json + their generator
-│   │   │                         #   (`make chaos-pairs`), the heal fixture suite, seed surveys
+│   │   │                         #   (`make chaos-pairs`), the heal fixture suite, seed surveys,
+│   │   │                         #   evaluation models, Rung 3's evaluation and held-out seeds
 │   │   └── workflow_targets/     # per example workflow: step id → chaos target key (ground truth)
 │   ├── real_apps/                # release A → release B harness
 │   └── fixtures/dom/             # before/after DOM snapshots for fast tests
 ├── dashboard/                    # Phase 11: React + Vite + TypeScript
 └── tests/
     ├── fakes/                    # in-memory port implementations
+    ├── live/                     # real model provider calls: `make live-providers` only
     ├── unit/
     ├── integration/
     └── e2e/
@@ -251,11 +255,14 @@ class WorkflowVersion(BaseModel):
     steps: tuple[Step, ...]            # 1–500
 
 class HealAttemptReport(BaseModel):    # one per rung per attempt; engine/domain/heals.py (ADR 0009)
-    rung: Literal[0, 1, 2]                 # 3 arrives in Phase 6, with model usage
+    rung: Literal[0, 1, 2, 3]
     attempt: int                           # a failed verification starts another pass
     outcome: RungOutcome                   # resolved, drifted, ambiguous, not_found, no_candidates,
                                            #   below_threshold, below_margin, top_rejected,
-                                           #   candidate_cap_reached, page_never_stable
+                                           #   candidate_cap_reached, page_never_stable; Rung 3:
+                                           #   no_eligible, look_alikes, not_asked, model_abstained,
+                                           #   choice_out_of_range, output_invalid,
+                                           #   model_unavailable, budget_exhausted, choice_refused
     target: TargetEvidence | None          # selector evidence at Rungs 0 and 1
     candidates: tuple[ScoredCandidate, ...]   # best first, with per-feature scores and rejections
     considered: int; on_page: int
@@ -264,11 +271,14 @@ class HealAttemptReport(BaseModel):    # one per rung per attempt; engine/domain
     threshold: float | None; required_margin: float | None
     kind_change: str | None                # e.g. "button → link"
     verification: Verification             # not_performed, pending, passed, failed
+    model: ModelChoiceEvidence | None      # Rung 3: the numbered list shown, every call (purpose,
+                                           #   outcome, tokens, latency, cost), choice, confidence,
+                                           #   reason; engine/domain/model_evidence.py (ADR 0010)
 
 class HealReport(BaseModel):            # on StepResult
     attempts: tuple[HealAttemptReport, ...]
     recoveries: tuple[RecoveryReport, ...]
-    healed_rung: Literal[1, 2] | None
+    healed_rung: Literal[1, 2, 3] | None
     abstention: AbstentionReason | None
     proposal: HealProposal | None          # for an irreversible step awaiting approval
 ```
@@ -316,7 +326,7 @@ class HealReport(BaseModel):            # on StepResult
 
 ### Runs and events
 
-- **`Run`** (saved as `run.json`) records the workflow version, status, bound inputs (secrets by name only), one `StepResult` per step, and the run's error. A `StepResult` carries its Rung 0 evidence (every selector's per-level counts and outcome, the winning rank, the identity, or the rung that healed it), navigation report, whether the action reached the page, checkpoint results, error, artifact names, and its `HealReport` when the ladder ran. Steps after the one the run stopped at are `not_run`.
+- **`Run`** (saved as `run.json`) records the workflow version, status, bound inputs (secrets by name only), one `StepResult` per step, the run's error, and its model usage totals (calls, tokens, latency, estimated cost, unpriced calls; `run_finished` carries them too). A `StepResult` carries its Rung 0 evidence (every selector's per-level counts and outcome, the winning rank, the identity, or the rung that healed it), navigation report, whether the action reached the page, checkpoint results, error, artifact names, and its `HealReport` when the ladder ran. Steps after the one the run stopped at are `not_run`.
 - **Stopping statuses.** A step fails, or stops for a person: `awaiting_approval` (a heal for an irreversible step) or `needs_review` (an irreversible action on a heal that failed verification). The run takes the same status; both exit 4.
 - **Events** are a discriminated union on `type`, each with `event_version`, `run_id`, a gap-free `sequence` from 1, and a Clock timestamp: `run_started`, `step_started`, `target_resolved`, `heal_attempted` (per rung, when it decides), `action_performed` (value kind, never the value), `checkpoint_passed`, `checkpoint_failed`, `heal_verified` (after the checkpoints), `state_restored`, `step_succeeded`, `step_failed` (with the stopping status), `run_finished`.
 - **Errors** carry a category: `step`, or `infrastructure` for `InfrastructureError` and anything unexpected.
@@ -343,6 +353,7 @@ class HealReport(BaseModel):            # on StepResult
   - `RunTimedOut`
   - `SecretUnavailable`
   - `ProviderError`
+    - `ModelOutputInvalid`: the model replied, but not as exactly one choice
   - `PolicyViolation`
   - `BudgetExceeded`
   - `VersionConflict`: a version number is taken, or its parent is missing
@@ -354,7 +365,7 @@ class HealReport(BaseModel):            # on StepResult
     - `BrowserUnavailable`
     - `ArtifactStoreUnavailable`
 
-**Ports so far:** `Clock`, `WorkflowStore`, and from Phase 3 `BrowserLauncher`/`BrowserPort`, `ArtifactStore`, `EventSink`, `SecretResolver`, and the small ports that keep the engine deterministic: `Timer` (monotonic time and backoff pauses), `RandomSource` (jitter), and `RunIdGenerator`. From Phase 4, recording adds `RecordingLauncher`/`RecordingBrowser` (a BrowserPort plus page events, element facts, and the hold-back handshake), `RecordingObserver`, and `StopSignal`. `ModelPort` arrives in Phase 6. A store instance is bound to one tenant when it is constructed, so its methods take no workspace. From Phase 5, `BrowserPort` also reads `element_facts` (moved up from the recording port) and `scan_candidates` for healing. Port data are plain models; no Playwright type crosses a port.
+**Ports so far:** `Clock`, `WorkflowStore`, and from Phase 3 `BrowserLauncher`/`BrowserPort`, `ArtifactStore`, `EventSink`, `SecretResolver`, and the small ports that keep the engine deterministic: `Timer` (monotonic time and backoff pauses), `RandomSource` (jitter), and `RunIdGenerator`. From Phase 4, recording adds `RecordingLauncher`/`RecordingBrowser` (a BrowserPort plus page events, element facts, and the hold-back handshake), `RecordingObserver`, and `StopSignal`. From Phase 6, `ModelPort` (a numbered choice in, a choice or null out) and `UsageLedger` (each UTC day's model-call count). A store instance is bound to one tenant when it is constructed, so its methods take no workspace. From Phase 5, `BrowserPort` also reads `element_facts` (moved up from the recording port) and `scan_candidates` for healing. Port data are plain models; no Playwright type crosses a port.
 
 ---
 
@@ -489,17 +500,21 @@ A selector that resolves to exactly one element is a candidate, not yet a succes
 - **Credentials:** a credential is typed only into a masked field a selector can mask in screenshots, and a plain value never into a masked one.
 - **Gates after acceptance:** a heal needs a checkpoint that can prove it; an irreversible step stops for approval with a proposal; a step acts on at most `MENDWORK_HEAL_MAX_ATTEMPTS` healed targets, and an authentication step on one.
 
-### Rung 3 — constrained model choice
+### Rung 3 — constrained model choice (ADR 0010)
 
-- **Input:**
-  - the step intent
-  - a summary of the original fingerprint
-  - the top-K candidates as a numbered list (role, name, label, nearby text)
-  - optionally, a screenshot with numbered boxes drawn over the candidates, if the provider supports images
-- **Output schema:** `{"choice": int | null, "confidence": float, "reason": str}`, parsed strictly with Pydantic.
-- Invalid output gets one repair retry, then abstains. A choice outside `1..K` abstains. `null` abstains.
-- The model's confidence alone never accepts a heal. The chosen element must still pass verification.
-- **Budgets:** a maximum number of model calls per run and per workspace per day. Exceeding either raises `BudgetExceeded` and abstains.
+The model is a chooser, never an author: it picks one number from a list of elements the ladder already pinned and scored, or null. It never writes a selector, never receives markup or a screenshot, and gives no safety guarantee. Everything that prevents a harmful action runs on its pick.
+
+- **When.** Only when a model is configured and Rung 2 declined with `below_threshold` or `below_margin`. Never after Rung 2 accepted; never on `top_rejected` (a person should look), a capped or unstable page, or no candidates.
+- **What it is shown.** Eligible candidates only: no safety rule refused them, and they share wording (name or label) or identity attributes with the recording, so context alone never establishes identity for a model either. The best `MENDWORK_MODEL_CANDIDATES_K`, numbered, each as kind, name, label, visible text when it says more, nearby text, and Rung 2's score. The prompt (`engine/healing/prompt.py`, `choose-candidate/1`) is a pure function; page text is scrubbed of secrets (base64 forms included), normalized, shortened, and quoted as JSON, so it can neither leak a secret nor forge a line. The step is described by its action and intent, never its value.
+- **When nothing is asked.** No eligible candidate, or the best one reads exactly like another (a choice between them would be position alone): Rung 2's abstention stands. A gate that does not depend on the pick (no checkpoint that can prove a heal, no heal attempts left) abstains before any call.
+- **Reading the answer.** One JSON object with exactly `choice` (integer or null), `confidence` (0 to 1), and `reason` (1–300 characters), parsed strictly by `engine/healing/choice.py` for every provider: no fence stripping, no coercion, duplicate keys and NaN refused. A reply in any other shape, cut off, or withheld gets one repair call, then abstains. Null abstains. A number outside the list abstains without a repair.
+- **Judging the pick.** It is read again from the page and must pass every safety rule on what it is now (danger words, identifiers, kind, button ↔ link, credentials), still read exactly as the model was shown it, have no look-alike among the eligible candidates (shown or not), be confirmed by Playwright, and sit on a page whose DOM has not changed since Rung 2 read it. Then the ordinary gates apply (a checkpoint that can prove it, approval for an irreversible step, attempt limits), and the step's checkpoints decide.
+- **Rules only a model's pick faces** (`engine/healing/pick_rules.py`), because a pick has no score margin behind it. Both only refuse; Rung 2 is unchanged.
+  - *Context veto:* when the recording has nearby text, a pick sharing none of it is refused (`context_lost`).
+  - *Weak verification:* on a step whose checkpoints only check where it leads (`url_matches`) or what a field holds (`field_has_value`), with no `element_visible`, `text_present`, `download_completed`, or `response_received`, a pick must keep the recorded `id`, `name`, or test id (`weak_verification`). A navigation link and a card link to the same page both pass `url_matches`, so that checkpoint cannot prove which one was clicked. The bar was chosen from a census of every line a model was shown (ADR 0010).
+- **Confidence** is recorded and shown, and no decision reads it.
+- **Budgets** (`engine/safety/budgets.py`): at most `MENDWORK_MODEL_MAX_CALLS_PER_RUN` calls per run and `MENDWORK_MODEL_MAX_CALLS_PER_DAY` per workspace per UTC day. Every call, a repair included, is reserved before it is made; the day's count lives behind the `UsageLedger` port (files now, a table from Phase 10), and an unreadable ledger allows no call. A used-up budget raises `BudgetExceeded` and the step abstains.
+- **Restores** replay an earlier Rung 3 heal by its signature, without asking the model again.
 
 Every rung emits a `heal_attempted` event with its full evidence, and `heal_verified` follows the checkpoints, so every decision can be explained later.
 
@@ -581,6 +596,7 @@ Risk is classified **by consequence**, not by mechanism:
 - Each run scrubs resolved values, in raw and escaped forms, from all outside text entering its records: errors, identities, checkpoint details, URLs, and DOM snapshots.
 - **Traces** pause before a secret is typed, resume only on a different document, are withheld when a failure happens on the secret's document, and are scanned for every secret encoding before being kept. **Screenshots** mask password fields and fields filled from secrets.
 - Tested end to end: a distinctive secret is searched for in stdout, stderr, events, `run.json`, DOM snapshots, and every trace member (ADR 0007).
+- **Model prompts** are built only from scrubbed text, with a secret's base64 forms removed as well; a test runs a heal through every provider adapter and searches each request body for every encoding (ADR 0010).
 - A structlog redaction processor wired to the `SecretResolver` extends the same guarantee to every log line (Phase 7).
 
 ### Explicit non-goals
@@ -613,17 +629,20 @@ class ModelPort(Protocol):
     async def choose_candidate(self, request: ChoiceRequest) -> ChoiceResult: ...
 ```
 
-- **Adapters:**
-  - `FakeModel` (deterministic, for tests)
-  - `Ollama` (local, free)
-  - `Gemini` (free tier, dev/demo only)
-  - `OpenAI-compatible` (any host exposing that API, including local servers)
-  - `Anthropic`
-- **Shared behaviour:**
-  - timeouts
-  - retries with exponential backoff and jitter on 429 and 5xx responses
-  - a circuit breaker
-  - usage, latency, and estimated-cost recording (cost table in config; local = $0)
+- **Adapters** (`adapters/models`):
+  - `FakeModel`: scripted replies or a function of the request, parsed like any provider's; tests and benchmarks
+  - `Ollama` (local, free): `/api/chat` with the reply schema as `format`, fixed temperature and seed
+  - `Gemini` (free tier, dev/demo only): `generateContent` with `responseJsonSchema`
+  - `OpenAI-compatible` (any host exposing Chat Completions, including local servers): strict `json_schema`
+  - `Anthropic`: later
+- **Shared behaviour** (`HttpChoiceModel`): a wire format per provider; everything else is common:
+  - one time limit per call covering every attempt, capped by the heal deadline
+  - retries with exponential backoff and jitter on timeouts, dropped connections, 408, 429, and 5xx; a short `Retry-After` is honoured, a long one ends the call; other 4xx are not retried
+  - a circuit breaker per provider: consecutive failures pause calls, then one trial call decides
+  - bounded reply size; a malformed reply is a provider error, a reply in the wrong shape is invalid output
+  - usage, latency, HTTP attempts, and estimated cost per call (price table in `MENDWORK_MODEL_PRICES`; local = $0; a hosted model without a price is unpriced, never free)
+- **No model by default.** `MENDWORK_MODEL_PROVIDER=none` until a person opts in; with a model configured, a run that needs no Rung 3 still makes zero calls, and creating the client opens no connection.
+- **Tests** replay recorded HTTP fixtures (respx). No test reaches the network: the test suite refuses non-loopback connections. `make live-providers` calls the configured provider for real, locally only.
 - **Data policy:** free hosted tiers may use inputs to improve the provider's models. Use them **only with chaos-portal and benchmark data**. Company workspaces must use a local model or their own paid key.
 - Model names are configuration, never hardcoded. Small models change monthly.
 

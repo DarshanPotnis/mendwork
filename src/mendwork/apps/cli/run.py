@@ -24,7 +24,14 @@ from mendwork.apps.cli.arguments import parse_input_arguments
 from mendwork.apps.cli.exit_codes import ExitCode, exit_code_for
 from mendwork.apps.cli.human_output import HumanProgress, render_summary
 from mendwork.apps.cli.validate import format_issue, format_problems, read_limited
-from mendwork.apps.cli.wiring import build_replayer, launch_options, session_options
+from mendwork.apps.cli.wiring import (
+    USAGE_DIRECTORY,
+    build_replayer,
+    launch_options,
+    model_client,
+    model_rung,
+    session_options,
+)
 from mendwork.engine.domain.identifiers import SecretName
 from mendwork.engine.domain.runs import Run
 from mendwork.engine.domain.workflow import WorkflowVersion
@@ -98,6 +105,7 @@ def run(
             headed=headed,
             slow_mo_ms=slow_mo,
             artifacts=LocalArtifactStore(artifacts_dir or settings.artifacts_dir),
+            usage_directory=(artifacts_dir or settings.artifacts_dir) / USAGE_DIRECTORY,
             output=output,
             source=str(workflow),
             stdout=stdout,
@@ -115,6 +123,7 @@ async def _replay(
     headed: bool,
     slow_mo_ms: int | None,
     artifacts: LocalArtifactStore,
+    usage_directory: Path,
     output: OutputMode,
     source: str,
     stdout: TextIO,
@@ -130,9 +139,19 @@ async def _replay(
         launch_options(settings, headed=headed, slow_mo_ms=slow_mo_ms), session_options(settings)
     )
     try:
-        async with launcher:
+        async with launcher, model_client(settings) as client:
+            model = (
+                model_rung(settings, client=client, ledger_directory=usage_directory)
+                if client is not None
+                else None
+            )
             replayer = build_replayer(
-                settings, launcher=launcher, artifacts=artifacts, events=events, environ=os.environ
+                settings,
+                launcher=launcher,
+                artifacts=artifacts,
+                events=events,
+                environ=os.environ,
+                model=model,
             )
             finished = await replayer.run(version, supplied)
     except RunInputError as error:

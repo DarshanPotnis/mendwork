@@ -2,11 +2,11 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal
 
 from mendwork.engine.domain.heals import (
     AbstentionReason,
     HealAttemptReport,
+    HealedRung,
     HealProposal,
     HealReport,
     RecoveryReport,
@@ -35,7 +35,7 @@ class StepProgress:
     finished: bool = False
     heal_attempts: list[HealAttemptReport] = field(default_factory=list)
     recoveries: list[RecoveryReport] = field(default_factory=list)
-    healed_rung: Literal[1, 2] | None = None
+    healed_rung: HealedRung | None = None
     abstention: AbstentionReason | None = None
     proposal: HealProposal | None = None
 

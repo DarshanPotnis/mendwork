@@ -75,5 +75,6 @@ recording-golden:
 bench:
 	@echo "make bench: available from Phase 9"
 
+# Calls the model provider MENDWORK_MODEL_* configures, for real. Local only, never in CI.
 live-providers:
-	@echo "make live-providers: available from Phase 6"
+	$(UV) run pytest tests/live --live-providers -p no:cacheprovider -q

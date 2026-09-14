@@ -9,6 +9,7 @@ description = "Self-healing browser automation: record once, replay free, repair
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "httpx>=0.28.1",
     "playwright>=1.62",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
@@ -31,6 +32,7 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "pytest-cov>=6.0",
+    "respx>=0.23.1",
     "ruff>=0.8",
     "types-jsonschema>=4.26.0.20260518",
     "types-pyyaml>=6.0.12.20260906",
@@ -101,6 +103,7 @@ addopts = ["--strict-markers", "--strict-config"]
 markers = [
     "browser: drives headless Chromium against the locally served chaos portal",
     "slow: CLI browser runs, pair sweeps, portal replays, the heal fixture suite, recordings, and portal determinism; excluded from make check, run by make check-all and CI",
+    "live: calls the configured model provider for real; deselected unless --live-providers (make live-providers), never run in CI",
 ]
 filterwarnings = ["error"]
 xfail_strict = true

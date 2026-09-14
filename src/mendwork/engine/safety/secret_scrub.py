@@ -74,6 +74,7 @@ class SecretScrubber:
     def __init__(self) -> None:
         self._text: set[str] = set()
         self._bytes: set[bytes] = set()
+        self._outbound: set[str] = set()
 
     def register(self, secret: SecretStr) -> None:
         """Remember a resolved secret so later output is scrubbed of it."""
@@ -81,6 +82,26 @@ class SecretScrubber:
         if value:
             self._text.update(text_variants(value))
             self._bytes.update(byte_variants(value))
+            self._outbound.update(
+                core.decode("ascii") for core in _base64_cores(value.encode("utf-8"))
+            )
+
+    def scrub_outbound(self, text: str) -> str:
+        """Text about to leave the machine, such as a model prompt, with every secret removed.
+
+        Beyond ``scrub_text``, a value's base64 forms are deleted too: page text can carry them,
+        and whoever receives the text can decode them.
+        """
+        cores = sorted(self._outbound, key=len, reverse=True)
+        result = self.scrub_text(text)
+        for _ in range(len(result) + 1):
+            if not any(core in result for core in cores):
+                return result
+            result = self.scrub_text(_replace_all(result, cores, ""))
+        everything = sorted(self._text | self._outbound, key=len, reverse=True)
+        while self._occurs(result) or any(core in result for core in cores):
+            result = _replace_all(result, everything, "")
+        return result
 
     @property
     def active(self) -> bool:

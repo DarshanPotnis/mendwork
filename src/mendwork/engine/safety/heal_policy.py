@@ -51,6 +51,20 @@ EFFECT_CHECKPOINTS: Final = (
 )
 """Checkpoints that observe what an action did. ``no_error_banner`` proves only that nothing
 visibly went wrong, and ``field_has_value`` only that a value landed in a field."""
+STRONG_CHECKPOINTS: Final = (ElementVisible, TextPresent, DownloadCompleted, ResponseReceived)
+"""Checkpoints that observe something on the page or the wire that the action produced."""
+WEAK_CHECKPOINTS: Final = (UrlMatches, FieldHasValue)
+"""Checkpoints another control can satisfy just as well: every link to a destination reaches its
+URL, and any field holds a value typed into it (ADR 0010)."""
+
+
+class VerificationStrength(StrEnum):
+    """How much a step's checkpoints prove about which element was acted on."""
+
+    STRONG = "strong"
+    WEAK = "weak"
+    """Only ``url_matches`` or ``field_has_value``: a look-alike can pass them."""
+    NONE = "none"
 
 
 class FailedHealRecovery(StrEnum):
@@ -135,6 +149,15 @@ def authentication_step(
 def has_effect_checkpoint(checkpoints: Sequence[Checkpoint]) -> bool:
     """Whether any checkpoint observes what the action did."""
     return any(isinstance(checkpoint, EFFECT_CHECKPOINTS) for checkpoint in checkpoints)
+
+
+def verification_strength(checkpoints: Sequence[Checkpoint]) -> VerificationStrength:
+    """Whether a step's checkpoints strongly, weakly, or not at all prove the element acted on."""
+    if any(isinstance(checkpoint, STRONG_CHECKPOINTS) for checkpoint in checkpoints):
+        return VerificationStrength.STRONG
+    if any(isinstance(checkpoint, WEAK_CHECKPOINTS) for checkpoint in checkpoints):
+        return VerificationStrength.WEAK
+    return VerificationStrength.NONE
 
 
 def is_verifiable(step: Step) -> bool:

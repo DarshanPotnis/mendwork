@@ -148,10 +148,52 @@ GUIDANCE: Final = {
     AbstentionReason.HEAL_TIMED_OUT: (
         "Next: re-run; if the page is slow, raise MENDWORK_HEAL_TIMEOUT_MS, or re-record this step."
     ),
+    AbstentionReason.MODEL_ABSTAINED: (
+        "Next: neither the scoring nor the model could tell which control is the recorded one. "
+        "If one of the candidates above is right, re-record this step on the current page."
+    ),
+    AbstentionReason.MODEL_CHOICE_OUT_OF_RANGE: (
+        "Next: the model answered a number that was not on the list, which counts as no answer. "
+        "Re-run; if it happens again, set MENDWORK_MODEL_NAME to another model, or re-record this "
+        "step."
+    ),
+    AbstentionReason.MODEL_OUTPUT_INVALID: (
+        "Next: the model twice replied in a form Mendwork cannot use (it was not exactly one JSON "
+        "object). Check that local-chooser:4b supports JSON-schema output, or re-record this step."
+    ),
+    AbstentionReason.MODEL_UNAVAILABLE: (
+        "Next: start Ollama (`ollama serve`) and check that `ollama list` shows local-chooser:4b, "
+        "then re-run. It said: the provider could not be reached (ConnectError)."
+    ),
+    AbstentionReason.MODEL_BUDGET_EXHAUSTED: (
+        "Next: today's 200 model calls (MENDWORK_MODEL_MAX_CALLS_PER_DAY) are used up; the count "
+        "starts again at 2026-09-14T00:00:00+00:00. Re-record this step, or raise the limit if the "
+        "spend is expected."
+    ),
+    AbstentionReason.MODEL_CHOICE_REFUSED: (
+        "Next: look at the page. The model's choice was refused by a safety rule (danger word); if "
+        "the change is intended, re-record this step. Safety rules are never relaxed to get past "
+        "it."
+    ),
 }
 CONTEXT: Final[dict[AbstentionReason, dict[str, JsonValue]]] = {
     AbstentionReason.TOP_REJECTED: {"rejection": "danger_word"},
     AbstentionReason.CANDIDATE_CAP_REACHED: {"on_page": 5120, "candidates_max": 4000},
+    AbstentionReason.MODEL_OUTPUT_INVALID: {
+        "model_problem": "it was not exactly one JSON object",
+        "model_name": "local-chooser:4b",
+    },
+    AbstentionReason.MODEL_UNAVAILABLE: {
+        "model_provider": "ollama",
+        "model_name": "local-chooser:4b",
+        "model_unavailable": "the provider could not be reached (ConnectError)",
+    },
+    AbstentionReason.MODEL_BUDGET_EXHAUSTED: {
+        "budget_scope": "day",
+        "budget_limit": 200,
+        "budget_resets_at": "2026-09-14T00:00:00+00:00",
+    },
+    AbstentionReason.MODEL_CHOICE_REFUSED: {"rejection": "danger_word"},
 }
 
 

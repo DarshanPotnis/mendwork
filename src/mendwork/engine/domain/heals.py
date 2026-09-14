@@ -3,21 +3,23 @@
 A heal is a proposal until the step's checkpoints pass, so every attempt records its
 verification outcome, and an abstention records the reason nothing was acted on. Every
 number a decision used is kept (each feature's score, the total, the margin, the threshold
-and margin it was held to), so any decision can be recomputed and explained later.
+and margin it was held to), so any decision can be recomputed and explained later. Rung 3
+also keeps what it showed the model and what the model answered.
 """
 
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Literal
 
-from pydantic import Field, StringConstraints
+from pydantic import Field
 
 from mendwork.engine.domain.base import DomainModel
 from mendwork.engine.domain.identifiers import StepIdField
+from mendwork.engine.domain.model_evidence import ModelChoiceEvidence
+from mendwork.engine.domain.scores import CandidateId, Score
 from mendwork.engine.domain.targets import IdentityReport, TargetEvidence
 
-CandidateId = Annotated[str, StringConstraints(pattern=r"^c[1-9][0-9]{0,5}$")]
-"""A candidate's place in its attempt's ranking: ``c1`` is the best-scoring element."""
-Score = Annotated[float, Field(ge=0.0, le=1.0, allow_inf_nan=False)]
+HealedRung = Literal[1, 2, 3]
+"""A rung that can accept a heal."""
 
 
 class FeatureName(StrEnum):
@@ -69,7 +71,13 @@ class RejectionReason(StrEnum):
     CREDENTIAL_MISMATCH = "credential_mismatch"
     """A credential would be typed into a visible field, or a plain value into a masked one."""
     UNCONFIRMED_IDENTITY = "unconfirmed_identity"
-    """Playwright could not confirm the identity computed for it."""
+    """Playwright could not confirm the identity computed for it, or it changed since."""
+    LOOK_ALIKE = "look_alike"
+    """Another candidate reads exactly the same in what the model was shown."""
+    CONTEXT_LOST = "context_lost"
+    """A model's pick shares none of the text recorded near the control."""
+    WEAK_VERIFICATION = "weak_verification"
+    """A model's pick lacks the corroboration a step with weak checkpoints requires."""
 
 
 class SafetyRejection(DomainModel):
@@ -103,6 +111,20 @@ class RungOutcome(StrEnum):
     TOP_REJECTED = "top_rejected"
     CANDIDATE_CAP_REACHED = "candidate_cap_reached"
     PAGE_NEVER_STABLE = "page_never_stable"
+    NO_ELIGIBLE = "no_eligible"
+    """Rung 3: no candidate both passed the safety rules and shared wording or identity
+    attributes with the recording, so the model was not asked."""
+    LOOK_ALIKES = "look_alikes"
+    """Rung 3: the best eligible candidate reads exactly like another, so the model was not
+    asked."""
+    NOT_ASKED = "not_asked"
+    """Rung 3: a gate that does not depend on the choice already stops this step."""
+    MODEL_ABSTAINED = "model_abstained"
+    CHOICE_OUT_OF_RANGE = "choice_out_of_range"
+    OUTPUT_INVALID = "output_invalid"
+    MODEL_UNAVAILABLE = "model_unavailable"
+    BUDGET_EXHAUSTED = "budget_exhausted"
+    CHOICE_REFUSED = "choice_refused"
 
 
 class Verification(StrEnum):
@@ -119,16 +141,16 @@ class Verification(StrEnum):
 class HealAttemptReport(DomainModel):
     """One rung's work within one heal attempt of a step."""
 
-    rung: Literal[0, 1, 2]
+    rung: Literal[0, 1, 2, 3]
     attempt: int = Field(ge=1)
     """Which pass through the ladder this is; a failed verification starts another."""
     outcome: RungOutcome
     target: TargetEvidence | None = None
     """Selector evidence: the recorded selectors at Rung 0, the alternates at Rung 1."""
     candidates: tuple[ScoredCandidate, ...] = ()
-    """The best-scoring candidates, best first."""
+    """The best-scoring candidates, best first; at Rung 3, the ones shown to the model."""
     considered: int = Field(default=0, ge=0)
-    """How many candidates were scored."""
+    """How many candidates were scored; at Rung 3, how many were eligible."""
     on_page: int = Field(default=0, ge=0)
     """How many action-compatible visible elements the page had."""
     chosen: CandidateId | None = None
@@ -141,6 +163,8 @@ class HealAttemptReport(DomainModel):
     kind_change: str | None = None
     """A change of element kind the heal accepts, such as ``button → link``."""
     verification: Verification = Verification.NOT_PERFORMED
+    model: ModelChoiceEvidence | None = None
+    """Rung 3 only: what the model was shown and answered."""
 
 
 class AbstentionReason(StrEnum):
@@ -157,6 +181,12 @@ class AbstentionReason(StrEnum):
     ATTEMPTS_EXHAUSTED = "attempts_exhausted"
     RESTORE_FAILED = "restore_failed"
     HEAL_TIMED_OUT = "heal_timed_out"
+    MODEL_ABSTAINED = "model_abstained"
+    MODEL_CHOICE_OUT_OF_RANGE = "model_choice_out_of_range"
+    MODEL_OUTPUT_INVALID = "model_output_invalid"
+    MODEL_UNAVAILABLE = "model_unavailable"
+    MODEL_BUDGET_EXHAUSTED = "model_budget_exhausted"
+    MODEL_CHOICE_REFUSED = "model_choice_refused"
 
 
 class RecoveryReport(DomainModel):
@@ -177,10 +207,12 @@ class RecoveryReport(DomainModel):
 class HealProposal(DomainModel):
     """A heal found for a step that may not act without a person's approval."""
 
-    rung: Literal[1, 2]
+    rung: HealedRung
     candidate: ScoredCandidate
     margin: Score | None = None
     reason: str
+    model: ModelChoiceEvidence | None = None
+    """For a Rung 3 proposal, what the model was shown and answered."""
 
 
 class HealReport(DomainModel):
@@ -188,7 +220,7 @@ class HealReport(DomainModel):
 
     attempts: tuple[HealAttemptReport, ...] = ()
     recoveries: tuple[RecoveryReport, ...] = ()
-    healed_rung: Literal[1, 2] | None = None
+    healed_rung: HealedRung | None = None
     """The rung whose heal passed verification."""
     abstention: AbstentionReason | None = None
     proposal: HealProposal | None = None

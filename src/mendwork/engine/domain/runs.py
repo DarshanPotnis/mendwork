@@ -25,6 +25,7 @@ from mendwork.engine.domain.identifiers import (
     VersionNumber,
     WorkflowIdField,
 )
+from mendwork.engine.domain.model_evidence import ModelUsageTotals
 from mendwork.engine.domain.targets import TargetEvidence
 
 _RUN_ID: Final = r"\d{8}T\d{6}Z-[0-9a-f]{8}"
@@ -196,6 +197,8 @@ class Run(DomainModel):
     """One result per step of the workflow, in order; steps after the one the run stopped at
     are not_run."""
     error: ErrorReport | None = None
+    model_usage: ModelUsageTotals = ModelUsageTotals()
+    """Every model call the run made, added up; zero when no step needed Rung 3."""
 
     @property
     def failed_step(self) -> StepResult | None:

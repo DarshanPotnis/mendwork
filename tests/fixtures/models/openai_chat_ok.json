@@ -1,0 +1,22 @@
+{
+  "id": "chatcmpl-example",
+  "object": "chat.completion",
+  "created": 1789300000,
+  "model": "chooser-example",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"choice\": 1, \"confidence\": 0.86, \"reason\": \"Same control, renamed.\"}",
+        "refusal": null
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 431,
+    "completion_tokens": 24,
+    "total_tokens": 455
+  }
+}

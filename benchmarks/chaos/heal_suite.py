@@ -2,8 +2,12 @@
 
 Serves the chaos portal, launches Chromium, and runs every case (see heal_cases). With
 ``--repeat N`` the suite runs N times and every case's outcome must be identical in each run.
+With ``--model`` Rung 3 runs where Rung 2 declines: ``oracle`` answers from ground truth,
+``adversarial`` answers wrongly whenever it can, and ``configured`` asks the model Settings
+configures (run it with ``--concurrency 1`` so a local model's latency is not queueing).
 
     MENDWORK_LOG_LEVEL=WARNING uv run python -m benchmarks.chaos.heal_suite --repeat 3 --cases
+    uv run python -m benchmarks.chaos.heal_suite --model oracle
 """
 
 import argparse
@@ -26,26 +30,32 @@ from benchmarks.chaos.heal_cases import (
     unresolved_heals,
 )
 from benchmarks.chaos.heal_pairs import ABSTAIN_TABLE_PATH, PORTAL_ROOT, load_table
+from benchmarks.chaos.models import MODEL_MODES, ModelMode
+from mendwork.apps.cli.wiring import model_client
 from mendwork.apps.portal.server import PortalServer
 from mendwork.observability import configure_logging
 from mendwork.settings import Settings
 
 
-async def suite(repeat: int, concurrency: int, show_cases: bool, out: TextIO) -> int:
+async def suite(
+    repeat: int, concurrency: int, show_cases: bool, model: ModelMode, out: TextIO
+) -> int:
     """Run the suite ``repeat`` times; 0 when every case is as expected and identical each time."""
-    configure_logging(Settings())
+    settings = Settings()
+    configure_logging(settings)
     workflows = load_workflows()
     cases = build_cases(workflows, load_table(), load_table(ABSTAIN_TABLE_PATH))
     runs: list[dict[str, CaseOutcome]] = []
     with PortalServer(PORTAL_ROOT, host="127.0.0.1", port=0) as server:
-        async with async_playwright() as playwright:
+        async with async_playwright() as playwright, model_client(settings) as client:
             browser = await playwright.chromium.launch()
             try:
                 for number in range(1, repeat + 1):
                     with tempfile.TemporaryDirectory(prefix="mendwork-heal-suite-") as scratch:
                         outcomes = await run_cases(
                             browser, server.url, cases, workflows, Path(scratch),
-                            concurrency=concurrency,
+                            concurrency=concurrency, model=model,
+                            client=client if model == "configured" else None,
                         )  # fmt: skip
                     runs.append(outcomes)
                     _report(number, outcomes, show_cases, out)
@@ -100,8 +110,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--concurrency", type=int, default=SUITE_CONCURRENCY)
     parser.add_argument("--cases", action="store_true", help="print every case's outcome")
+    parser.add_argument("--model", choices=MODEL_MODES, default="none")
     arguments = parser.parse_args(argv)
-    return asyncio.run(suite(arguments.repeat, arguments.concurrency, arguments.cases, sys.stdout))
+    return asyncio.run(
+        suite(arguments.repeat, arguments.concurrency, arguments.cases, arguments.model, sys.stdout)
+    )
 
 
 if __name__ == "__main__":

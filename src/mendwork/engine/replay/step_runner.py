@@ -27,6 +27,7 @@ from mendwork.engine.errors import (
 )
 from mendwork.engine.healing.context import LadderContext
 from mendwork.engine.healing.ladder import is_healable
+from mendwork.engine.healing.model_rung import ModelChooser
 from mendwork.engine.healing.recovery import StateRestorer
 from mendwork.engine.healing.run_state import RunHealState, StepStart
 from mendwork.engine.ports.artifacts import ArtifactStore
@@ -65,6 +66,7 @@ class StepRunner:
         run_id: RunId,
         run_deadline: Deadline,
         log: structlog.stdlib.BoundLogger,
+        chooser: ModelChooser | None = None,
     ) -> None:
         self._browser = browser
         self._emitter = emitter
@@ -116,6 +118,7 @@ class StepRunner:
                 settle_timeout_ms=config.settle_timeout_ms,
                 quiet_frames=config.settle_quiet_frames,
                 scrubber=scrubber,
+                chooser=chooser,
             ),
             config=config,
             timer=timer,

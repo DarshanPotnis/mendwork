@@ -324,18 +324,52 @@ ARCHITECTURE.md §7 and ADR 0009 updated. The chaos portal's determinism checks 
 ## Phase 6 — Model providers and Rung 3
 
 ```
-Phase 6 — AI as a constrained chooser.
-Read ARCHITECTURE.md §7 (Rung 3), §10. Present a plan and wait for approval.
+Phase 6 — Rung 3: the model as a constrained chooser.
+Read CLAUDE.md, ARCHITECTURE.md §5, §7, §8, §10, ADR 0009, and chaos-portal/README.md. Present a
+plan and wait for approval.
 
-- ModelPort.choose_candidate(ChoiceRequest) -> ChoiceResult(choice: int | None, confidence, reason, usage).
-- engine/healing/prompt.py: builds the prompt from step intent, fingerprint summary, and top-K numbered candidates (K from Settings). Optional set-of-marks screenshot (numbered boxes over candidates) when the provider supports images; drawing happens in the browser adapter via js/set_of_marks.js (same JavaScript standards, covered by `make jscheck`), and the overlay is always removed before any action is performed.
-- Strict parsing into Pydantic; invalid → one repair retry → abstain; out-of-range or null → abstain. Model confidence never accepts on its own; verification still decides.
-- Adapters in adapters/models: fake.py (scripted), ollama.py, gemini.py, openai_compatible.py (base_url + key). Shared base: timeouts, exponential backoff with jitter on 429/5xx, circuit breaker, usage/latency/estimated-cost recording (cost table in Settings; local = 0). Model names come from Settings.
-- engine/safety/budgets.py: max model calls per run and per day; exceeded → BudgetExceeded → abstain.
-- Ladder: Rung 3 only after Rungs 0–2 fail or are ambiguous.
-- Contract tests with recorded HTTP fixtures (respx) for each real adapter; `make live-providers` runs opt-in live calls locally.
+The core constraint
+- ModelPort.choose_candidate(ChoiceRequest) -> ChoiceResult(choice, confidence, reason, usage). The
+  model picks an index from the top-K candidates Rung 2 already scored, or null; it never writes a
+  selector, never receives raw HTML, never sees the page unmediated.
+- Rung 3 runs only after Rung 2 declines below the threshold or margin (never after it accepts, never
+  on a refused top candidate). The model is shown only candidates no safety rule refused and that
+  share wording or identity attributes with the recording; look-alikes are never put to it.
+- Strict parsing; invalid output gets one repair call, then abstains; out of range or null abstains.
+  Every pick is read again and passes every Rung 2 safety rule, the gates, and the step's checkpoints.
+  Confidence never decides. The prompt's destructiveness instruction is a hint, not a safeguard.
+- Two refuse-only rules for model picks, added after the held-out run found a false success (level 5
+  seed 32: a navigation link to the same page passed url_matches): a pick sharing none of the recorded
+  nearby text is refused; on a step verified only by url_matches or field_has_value, a pick must keep
+  the recorded id, name, or test id. The bar comes from benchmarks/chaos/rung3_census.py.
 
-Acceptance: make check passes; the fixture suite reports which cases Rung 3 resolved (using FakeModel scripted from ground truth for CI, plus a local run with Ollama documented in the phase summary); wrong-action count remains 0.
+Prompt, providers, budgets
+- engine/healing/prompt.py: a pure, versioned prompt (intent, fingerprint summary, numbered
+  candidates with Rung 2's score, K from Settings); page text scrubbed of secrets in every encoding,
+  quoted so it cannot forge a line. Set-of-marks screenshots deferred (ADR 0010).
+- adapters/models: fake.py, ollama.py, gemini.py, openai_compatible.py over a shared HTTP model with
+  timeouts, backoff with jitter on 429/5xx, a circuit breaker, usage, latency, and cost (price table in
+  Settings; local = 0). No model is configured by default.
+- engine/safety/budgets.py: calls per run and per UTC day (file ledger behind a UsageLedger port);
+  exceeded → BudgetExceeded → abstain with a Next: line. Every heal event records model usage; the run
+  record totals it. A run that needs no heal makes zero model calls.
+
+Evaluation
+- FakeModel scripted from ground truth (benchmarks/chaos/models.py) for CI: the fixture suite with
+  Rung 3 on, and the six known Rung 2 failures (level 3 seeds 3, 15; level 5 seeds 3, 9, 10, 11).
+- A local Ollama run on the known failures, the fixture suite, and ten held-out seeds chosen before any
+  model ran (benchmarks/chaos/rung3_holdout.json), with ground truth at every action; an adversarial
+  model to measure what the rules stop. `python -m benchmarks.chaos.rung3_eval`,
+  `python -m benchmarks.chaos.model_latency`.
+
+Tests: unit (FakeModel) for when Rung 3 runs, parsing and repair, every safety rule on a pick, look-alikes,
+budgets, gates, reuse during a restore, and events; properties (a danger-word pick is never accepted,
+confidence never decides, no call when Rung 2 accepts); respx contract tests per provider; a secret
+search of every provider request body; a network guard over the whole suite; `make live-providers`.
+
+Acceptance: make check under 60 s and make check-all under 150 s (caffeinate -i); wrong actions 0; the
+evaluation verdict, the Ollama run (model, hardware, latency), and the zero-call happy path in the
+report; ARCHITECTURE.md §7 and §10 and ADR 0010 updated.
 ```
 
 ---
@@ -369,6 +403,7 @@ Read ARCHITECTURE.md §9. Present a plan and wait for approval.
 - Promotion policy from Settings: `immediate` or `after_n_successes` (pending patches are tried first on later runs but persisted only after N verified successes).
 - CLI: `mendwork history <workflow>`, `mendwork diff <workflow> <vA> <vB>` (human-readable), `mendwork rollback <workflow> --to <v>`.
 - Self-contained static HTML run report: step timeline, screenshots with healed element highlighted, fingerprint before/after diff, rung used, cost summary.
+- Checkpoint strength per step in `mendwork history` and the run report: strong (element_visible, text_present, download_completed, response_received) or weak (url_matches or field_has_value alone). A heal on a weakly verified step proves less, and a workflow whose steps all rely on url_matches is weaker than its pass rate suggests (ADR 0010).
 
 E2E test (the key guarantee): chaos seed at level 3 → run heals and creates v2 → rerun on the same seed uses zero heals and zero model calls.
 
@@ -386,7 +421,7 @@ Read ARCHITECTURE.md §13. Present a plan and wait for approval.
 - `mendwork bench chaos --seeds N --level L --workflows workflows/examples` runs every workflow across seeds; ground truth from window.__chaos.
 - Per-step outcome classes: healed_correct, healed_wrong, abstained_correct, abstained_unnecessary, failed.
 - Baselines: recorded CSS selector only; Playwright role+name only; ladder without Rung 3; full ladder.
-- Metrics: wrong-action rate (headline), heal success rate, correct-abstain rate, unnecessary-abstain rate, model calls/run, estimated cost/run, p50/p95 step latency, rung distribution.
+- Metrics: wrong-action rate (headline), heal success rate, correct-abstain rate, unnecessary-abstain rate, model calls/run, estimated cost/run, p50/p95 step latency, rung distribution, and every metric split by checkpoint strength (strong vs weak verification, ADR 0010), with false successes (checkpoints passed on a wrong element) counted separately.
 - Output: results JSON with a versioned schema + static HTML scorecard with a baseline comparison chart.
 - CI: 5-seed smoke benchmark that fails if wrong-action rate > 0.
 - benchmarks/real_apps/: harness that records against app release A and replays on release B via docker compose. Propose 2–3 self-hosted open-source web apps whose UI changed noticeably between two releases, with reasoning, and wait for my choice before implementing.

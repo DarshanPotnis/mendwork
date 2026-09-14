@@ -1,0 +1,22 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "{\"choice\": 1, \"confidence\": 0.86, \"reason\": \"Same control, renamed.\"}"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 431,
+    "candidatesTokenCount": 24,
+    "totalTokenCount": 455
+  },
+  "modelVersion": "flash-example"
+}

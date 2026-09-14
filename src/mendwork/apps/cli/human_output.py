@@ -11,7 +11,6 @@ from pydantic import JsonValue
 
 from mendwork.apps.cli.heal_output import (
     DIFFERENCE_WORDS,
-    INDENT,
     attempt_lines,
     next_step,
     resolution_line,
@@ -19,6 +18,8 @@ from mendwork.apps.cli.heal_output import (
     stop_headline,
     verified_lines,
 )
+from mendwork.apps.cli.heal_words import INDENT
+from mendwork.apps.cli.model_output import model_usage_line
 from mendwork.engine.domain.enums import ActionType, ValueKind
 from mendwork.engine.domain.events import (
     ActionPerformedEvent,
@@ -46,6 +47,7 @@ from mendwork.engine.domain.runs import (
 )
 from mendwork.engine.domain.targets import SelectorOutcome, TargetEvidence
 
+_MODEL_RUNG = 3
 _STOPPED_WORDS = {
     RunStatus.AWAITING_APPROVAL: "AWAITING APPROVAL",
     RunStatus.NEEDS_REVIEW: "NEEDS REVIEW",
@@ -239,7 +241,8 @@ def _target_cell(step: StepResult) -> str:
     heal = step.heal
     if heal is not None:
         if heal.healed_rung is not None:
-            return f"healed r{heal.healed_rung}"
+            model = " (model)" if heal.healed_rung == _MODEL_RUNG else ""
+            return f"healed r{heal.healed_rung}{model}"
         if heal.proposal is not None:
             return "proposal"
         if heal.abstention is not None:
@@ -258,6 +261,11 @@ def _target_cell(step: StepResult) -> str:
 
 
 def _outcome(run: Run, run_directory: Path) -> list[str]:
+    usage = model_usage_line(run.model_usage)
+    return _status_lines(run, run_directory) + ([usage] if usage is not None else [])
+
+
+def _status_lines(run: Run, run_directory: Path) -> list[str]:
     directory = run_directory / run.run_id
     total = len(run.steps)
     succeeded = sum(1 for step in run.steps if step.status is StepStatus.SUCCEEDED)

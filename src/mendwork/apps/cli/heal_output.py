@@ -2,7 +2,7 @@
 
 Presentation only. Every fact shown comes from heal events and error reports. An abstention
 is a correct outcome, so its output explains what was compared and ends with a concrete next
-step chosen by the reason nothing was acted on.
+step chosen by the reason nothing was acted on. Rung 3's lines live in ``model_output``.
 """
 
 from collections.abc import Mapping
@@ -10,6 +10,8 @@ from typing import Final
 
 from pydantic import JsonValue
 
+from mendwork.apps.cli.heal_words import INDENT, describe
+from mendwork.apps.cli.model_output import model_next_step, rung3_lines
 from mendwork.engine.domain.events import HealVerifiedEvent, StateRestoredEvent
 from mendwork.engine.domain.heals import (
     AbstentionReason,
@@ -20,7 +22,6 @@ from mendwork.engine.domain.heals import (
 from mendwork.engine.domain.runs import ErrorReport
 from mendwork.engine.domain.targets import IdentityReport, TargetEvidence
 
-INDENT: Final = "      "
 DIFFERENCE_WORDS: Final = {
     "role": "role",
     "tag": "tag",
@@ -41,13 +42,7 @@ _FEATURE_LABELS: Final = (
 _CHECKPOINTS_THAT_PROVE: Final = (
     "url_matches, element_visible, text_present, download_completed, or response_received"
 )
-
-
-def describe(identity: IdentityReport | None) -> str:
-    """An element in words, such as ``button "Download CSV"``."""
-    if identity is None:
-        return "an element"
-    return f'{identity.role or identity.tag} "{identity.name}"'
+_MODEL_RUNG: Final = 3
 
 
 def attempt_lines(report: HealAttemptReport) -> list[str]:
@@ -59,11 +54,18 @@ def attempt_lines(report: HealAttemptReport) -> list[str]:
             return [INDENT + _rung1(report)]
         case 2:
             return _rung2(report)
+        case 3:
+            return rung3_lines(report)
 
 
 def verified_lines(event: HealVerifiedEvent) -> list[str]:
     """Whether the checkpoints proved a heal."""
     if event.passed:
+        if event.rung == _MODEL_RUNG:
+            return [
+                f"{INDENT}HEALED at rung 3 (model choice): every checkpoint passed after acting on "
+                "the model's choice; the checkpoints, not the model, decided"
+            ]
         return [
             f"{INDENT}HEALED at rung {event.rung}: every checkpoint passed after acting on the "
             "healed target"
@@ -89,7 +91,12 @@ def resolution_line(evidence: TargetEvidence) -> str | None:
     """The target line for a healed step, or None for a Rung 0 resolution."""
     if evidence.healed_rung is None:
         return None
-    return f"target: healed at rung {evidence.healed_rung} → {describe(evidence.identity)}"
+    rung = (
+        "rung 3 (model choice)"
+        if evidence.healed_rung == _MODEL_RUNG
+        else f"rung {evidence.healed_rung}"
+    )
+    return f"target: healed at {rung} → {describe(evidence.identity)}"
 
 
 def stop_headline(error: ErrorReport) -> str:
@@ -128,6 +135,9 @@ def next_step(error: ErrorReport) -> str | None:
 
 
 def _abstention_step(reason: str, context: Mapping[str, JsonValue]) -> str:
+    model_step = model_next_step(reason, context)
+    if model_step is not None:
+        return model_step
     if reason == AbstentionReason.CANDIDATE_CAP_REACHED:
         return (
             f"Next: raise MENDWORK_HEAL_CANDIDATES_MAX above {context.get('on_page')} (it is "

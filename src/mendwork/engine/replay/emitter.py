@@ -221,5 +221,6 @@ class RunEmitter:
                 duration_ms=run.duration_ms or 0,
                 failed_step_id=failed.step_id if failed is not None else None,
                 error_type=run.error.type if run.error is not None else None,
+                model_usage=run.model_usage,
             )
         )

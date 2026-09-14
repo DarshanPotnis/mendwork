@@ -27,6 +27,7 @@ from mendwork.adapters.secrets_env.naming import (
 from mendwork.engine.domain.heals import FeatureName
 from mendwork.engine.healing.config import acceptance_problems
 from mendwork.engine.safety.redaction import DEFAULT_SENSITIVE_KEY_FRAGMENTS
+from mendwork.settings_model import ModelSettings
 
 ENV_PREFIX: Final = "MENDWORK_"
 # Danger words mark stored data changing or other people affected. "remove" and its kin are
@@ -179,8 +180,12 @@ class _OwnDotEnvSource(PydanticBaseSettingsSource):
         }
 
 
-class Settings(BaseSettings):
-    """Runtime configuration for every Mendwork process."""
+class Settings(ModelSettings):
+    """Runtime configuration for every Mendwork process.
+
+    Rung 3's model provider settings are declared in ``settings_model`` and read here with the
+    same prefix, sources, and checks as every other setting.
+    """
 
     model_config = SettingsConfigDict(
         env_prefix=ENV_PREFIX,

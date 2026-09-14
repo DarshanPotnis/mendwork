@@ -1,0 +1,28 @@
+{
+  "purpose": "Held-out seeds for Rung 3's generalization check with a real local model (ADR 0010). Chosen from a Rung 2-only survey before any model was run, and never used to change the prompt.",
+  "chosen_on": "2026-09-13",
+  "workflow": "download_report",
+  "rule": "At each level, in ascending seed order from 20, the first five seeds whose Rung 2-only run of download_report stops with an abstention Rung 3 takes up (below_threshold or below_margin), excluding every seed in heal_pairs.json and abstain_pairs.json and every seed a test uses. Seeds 0-19 are excluded: Phase 5 surveyed them and the six known Rung 2 failures come from them.",
+  "survey": "uv run python -m benchmarks.chaos.rung0_seeds --level L --seeds 20-119 (level 3 extended to 120-299 because 20-119 held only two qualifying seeds)",
+  "excluded_seeds": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 17, 31, 34, 424242],
+  "levels": {
+    "3": [43, 80, 126, 140, 144],
+    "5": [21, 24, 26, 29, 32]
+  },
+  "rung2_stops": {
+    "3": {
+      "43": "open_reports below_threshold",
+      "80": "sign_in below_threshold",
+      "126": "fill_email below_threshold",
+      "140": "fill_email below_threshold",
+      "144": "sign_in below_threshold"
+    },
+    "5": {
+      "21": "apply_filter below_margin",
+      "24": "apply_filter below_margin",
+      "26": "open_reports below_margin",
+      "29": "fill_email below_threshold",
+      "32": "open_reports below_threshold"
+    }
+  }
+}

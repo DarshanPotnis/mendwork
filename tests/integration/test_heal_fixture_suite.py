@@ -40,7 +40,7 @@ async def heal_suite(
     request: pytest.FixtureRequest,
 ) -> Mapping[str, CaseOutcome]:
     directory: Path = tmp_path_factory.mktemp("heal-suite")
-    outcomes = await run_cases(browser, portal_url, CASES, WORKFLOWS, directory)
+    outcomes = await run_cases(browser, portal_url, CASES, WORKFLOWS, directory, model="oracle")
     request.config.stash[HEAL_SUITE_OUTCOMES] = outcomes
     return outcomes
 
@@ -79,3 +79,19 @@ async def test_no_case_in_the_suite_acted_on_a_wrong_element(
     wrong = {case_id: outcome.wrong for case_id, outcome in heal_suite.items() if outcome.wrong}
 
     assert wrong == {}
+
+
+async def test_rung3_only_takes_up_what_rung2_declined_and_asks_only_when_it_can_help(
+    heal_suite: Mapping[str, CaseOutcome],
+) -> None:
+    heal_rungs = Counter(
+        outcome.rung for outcome in heal_suite.values() if outcome.case.category == HEAL
+    )
+    calls = {
+        case_id: outcome.model_calls
+        for case_id, outcome in heal_suite.items()
+        if outcome.model_calls
+    }
+
+    assert heal_rungs == {0: 38, 2: 14}
+    assert calls == {"remove_target-dashboard.open_reports": 1}
