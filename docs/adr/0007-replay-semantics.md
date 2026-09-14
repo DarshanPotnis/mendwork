@@ -188,8 +188,25 @@ changed the design, and each is easy to get wrong again.
 
 - `slow` marks the tests that launch Chromium through the CLI, the full heal pair sweep, and
   the in-process portal replays (`test_replay_portal.py`). `make check` runs everything else
-  and stays under a minute; `make check-all` and CI run everything. A static test fails
+  within its time budget (below); `make check-all` and CI run everything. A static test fails
   when a module uses a slow fixture, or the portal replay module loses its marker.
+- **Time budgets (amended 2026-09-14):** `make check` under **80 s** and `make check-all`
+  under **200 s**, measured in the foreground on a quiet machine: after a reboot to clear
+  swap, with Chrome, VS Code, and other heavy applications closed.
+  - *Why the figures changed.* The original target, a fast loop under a minute, was set in
+    Phase 3, when the suite was a fraction of its current size. At the start of Phase 7 the
+    fast suite had 1,545 tests. `make check` took 63.13 s in the foreground on a loaded
+    machine (swap 7.2 of 8 GB, Chrome open). pytest took 59.29 s with branch coverage and
+    49.81 s without; the coverage ratchet alone took 9.39 s.
+  - *What the budget protects.* The number was never the invariant. Two properties are:
+    every test `make check` skips still runs in `make check-all` and CI, so the fast loop
+    hides nothing CI would catch; and the coverage ratchet stays in `make check`, because it
+    guards exactly the replay, verification, safety, recording, and healing code later phases
+    add. Removing coverage, moving the ratchet out, or widening `slow` to meet a figure would
+    trade those properties for a number, so none of them is an acceptable way to meet a budget.
+  - *When a budget is exceeded,* the work stops and reports the measurements. Running tests in
+    parallel (pytest-xdist) is the structural answer to a slow suite; if it is needed, it is
+    decided as its own change with its own ADR, not inside a phase.
 - **Two gate sets, and only one is the contract.**
   - `make check-all` (the full suite): engine ≥ 90%, domain ≥ 95%, overall ≥ 85%. **These
     are the coverage contract**, and CI enforces them.
