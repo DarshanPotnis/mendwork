@@ -26,6 +26,8 @@ WORKFLOW_SNAPSHOT: Final = parse_artifact_name("workflow.json")
 FIRST_SEGMENT: Final = 1
 """A run's first execution; each resume is the next segment."""
 TRACE: Final = parse_artifact_name("failure/trace.zip")
+REPORT: Final = parse_artifact_name("report.html")
+"""The run's self-contained HTML report (ADR 0013)."""
 _UNSAFE: Final = re.compile(r"[^A-Za-z0-9._-]+")
 _FILENAME_MAX: Final = 120
 _FALLBACK_FILENAME: Final = "download"
@@ -39,6 +41,12 @@ def step_label(index: int, step_id: str) -> str:
 def screenshot_name(index: int, step_id: str, segment: int = FIRST_SEGMENT) -> ArtifactName:
     """The screenshot taken when a step ends."""
     return parse_artifact_name(f"steps/{_in_segment(step_label(index, step_id), segment)}.png")
+
+
+def found_screenshot_name(index: int, step_id: str, segment: int = FIRST_SEGMENT) -> ArtifactName:
+    """The screenshot around a healed element, taken just before its action."""
+    label = _in_segment(step_label(index, step_id), segment)
+    return parse_artifact_name(f"steps/{label}.found.png")
 
 
 def dom_snapshot_name(index: int, step_id: str, segment: int = FIRST_SEGMENT) -> ArtifactName:

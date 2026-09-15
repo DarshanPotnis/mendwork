@@ -19,7 +19,11 @@ Responder = Callable[[ChoiceRequest], Reply]
 
 
 class FakeModel:
-    """A ModelPort whose replies are written in advance."""
+    """A ModelPort whose replies are written in advance.
+
+    It counts no tokens, so its calls report no token counts unless a test gives them: a scripted
+    reply must never read as a call that used zero tokens.
+    """
 
     def __init__(
         self,
@@ -27,8 +31,8 @@ class FakeModel:
         *,
         provider: str = "fake",
         model: str = "scripted",
-        input_tokens: int = 0,
-        output_tokens: int = 0,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
     ) -> None:
         self._replies = list(replies) if not callable(replies) else None
         self._responder = replies if callable(replies) else None

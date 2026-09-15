@@ -70,8 +70,8 @@ def test_a_later_version_names_its_parent_and_its_reason() -> None:
             ],
         ),
         (
-            {"version": 2, "parent_version": 1, "change": {"kind": "heal"}},
-            [("change", "kind must be one of: manual_edit, rollback (got 'heal')")],
+            {"version": 2, "parent_version": 1, "change": {"kind": "merge"}},
+            [("change", "kind must be one of: manual_edit, rollback, heal (got 'merge')")],
         ),
     ],
 )

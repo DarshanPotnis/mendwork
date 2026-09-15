@@ -11,9 +11,13 @@ import typer
 from pydantic import ValidationError
 
 from mendwork.apps.cli.approvals import approve, reject
+from mendwork.apps.cli.diff import diff
 from mendwork.apps.cli.exit_codes import ExitCode
+from mendwork.apps.cli.history import history
+from mendwork.apps.cli.import_workflow import import_workflow
 from mendwork.apps.cli.record import build_record_command
 from mendwork.apps.cli.record_runtime import production_dependencies
+from mendwork.apps.cli.rollback import rollback
 from mendwork.apps.cli.run import run
 from mendwork.apps.cli.schema import schema
 from mendwork.apps.cli.show import show
@@ -33,6 +37,10 @@ app.command()(run)
 app.command()(show)
 app.command()(approve)
 app.command()(reject)
+app.command()(history)
+app.command()(diff)
+app.command()(rollback)
+app.command(name="import")(import_workflow)
 app.command(name="record")(build_record_command(production_dependencies()))
 
 

@@ -12,7 +12,6 @@ import sys
 from typing import TextIO
 
 import typer
-from pydantic import ValidationError
 
 from mendwork.adapters.artifacts_local.store import LocalArtifactStore
 from mendwork.apps.cli.approval_output import render_show
@@ -29,10 +28,9 @@ from mendwork.apps.cli.commands import (
     settings_or_exit,
 )
 from mendwork.apps.cli.exit_codes import ExitCode
+from mendwork.apps.cli.run_reports import saved_workflow
 from mendwork.engine.domain.runs import RunId
-from mendwork.engine.domain.workflow import WorkflowVersion
 from mendwork.engine.errors import InfrastructureError, UnknownRun
-from mendwork.engine.replay.artifact_names import WORKFLOW_SNAPSHOT
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 
 
@@ -71,17 +69,6 @@ async def _show(
     if output is OutputMode.JSON:
         result_line(stdout, ExitCode.SUCCEEDED, run=json.loads(record.model_dump_json()))
     else:
-        workflow = _saved_workflow(artifacts, run_id)
+        workflow = saved_workflow(artifacts, run_id)
         stdout.write(render_show(record, workflow, artifacts.runs_root) + "\n")
     return ExitCode.SUCCEEDED
-
-
-def _saved_workflow(artifacts: LocalArtifactStore, run_id: RunId) -> WorkflowVersion | None:
-    """The workflow the run executed, for the recorded side of each proposal; None if unreadable."""
-    data = artifacts.read_now(run_id, WORKFLOW_SNAPSHOT)
-    if data is None:
-        return None
-    try:
-        return WorkflowVersion.model_validate_json(data)
-    except ValidationError:
-        return None

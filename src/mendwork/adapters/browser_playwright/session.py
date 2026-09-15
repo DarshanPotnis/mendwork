@@ -1,12 +1,12 @@
 """The BrowserPort on one Playwright page: pinned elements, page scripts, and guarded tracing."""
 
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from secrets import token_hex
 from typing import Final
 
 import structlog
-from playwright.async_api import ElementHandle, Page
+from playwright.async_api import ElementHandle, JSHandle, Page
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from pydantic import BaseModel, ConfigDict
@@ -25,9 +25,11 @@ from mendwork.adapters.browser_playwright.facts import FACTS_REQUEST, FactsReply
 from mendwork.adapters.browser_playwright.identity import identify, read_identity, same_node
 from mendwork.adapters.browser_playwright.locators import build_locator
 from mendwork.adapters.browser_playwright.observations import Observations
+from mendwork.adapters.browser_playwright.recording.messages import SCOPE_REPLIES
 from mendwork.adapters.browser_playwright.resolution import resolve_unique
 from mendwork.adapters.browser_playwright.scripts import PageScripts
 from mendwork.adapters.browser_playwright.tracing import TraceRecorder
+from mendwork.adapters.browser_playwright.views import ElementGeometry, view_clip
 from mendwork.engine.domain.checkpoints import ResponseReceived, UrlMatches
 from mendwork.engine.domain.selectors import Selector
 from mendwork.engine.errors import MendworkError, TargetNotFound
@@ -37,6 +39,7 @@ from mendwork.engine.ports.browser_types import (
     DownloadObservation,
     ElementIdentity,
     ElementRef,
+    ElementView,
     EqualsText,
     FieldExpectation,
     FieldValueCheck,
@@ -52,8 +55,12 @@ from mendwork.engine.ports.browser_types import (
 )
 from mendwork.engine.ports.candidate_types import CandidateQuery, CandidateScan
 from mendwork.engine.ports.element_types import ElementFacts
+from mendwork.engine.ports.recording_types import AncestorFacts
 from mendwork.engine.safety.egress_blocks import EgressBlock, egress_blocked
 from mendwork.engine.safety.secret_scrub import SecretScrubber
+
+ReplyObserver = Callable[[str, object], None]
+"""Sees what a page script returned before it is parsed; a recording inspects every payload."""
 
 _DETACHED: Final = Actionability(attached=False, visible=False, enabled=False, editable=False)
 # A reading of an element whose document was replaced. It matches no fingerprint, and Rung 0's
@@ -89,12 +96,14 @@ class PlaywrightSession:
         observations: Observations,
         tracer: TraceRecorder,
         egress: EgressLog,
+        replies: ReplyObserver | None = None,
     ) -> None:
         self._page = page
         self._scripts = scripts
         self._observations = observations
         self._tracer = tracer
         self._egress = egress
+        self._replies = replies
         self._handles: dict[ElementRef, ElementHandle] = {}
         self._pinned = 0
         self._log = structlog.stdlib.get_logger("mendwork.browser")
@@ -225,7 +234,37 @@ class PlaywrightSession:
 
     async def element_facts(self, element: ElementRef) -> ElementFacts:
         raw = await self._evaluate_on(element, self._scripts.element_facts, FACTS_REQUEST)
+        self._observed("element_facts", raw)
         return FactsReply.model_validate(raw).facts()
+
+    async def scope_ancestors(
+        self, element: ElementRef, *, limit: int
+    ) -> tuple[AncestorFacts, ...]:
+        handle = self._handle(element)
+        try:
+            array = await handle.evaluate_handle(self._scripts.element_ancestors, limit)
+        except PlaywrightError as error:
+            raise _element_gone(error) from error
+        children: list[JSHandle] = []
+        try:
+            raw = await self._page.evaluate(self._scripts.scope_facts, array)
+            self._observed("scope_facts", raw)
+            replies = SCOPE_REPLIES.validate_python(raw)
+            properties = await array.get_properties()
+            children = list(properties.values())
+            ancestors: list[AncestorFacts] = []
+            for position, reply in enumerate(replies):
+                child = properties.get(str(position))
+                ancestor = child.as_element() if child is not None else None
+                identity = await self._identity(ancestor) if ancestor is not None else None
+                ancestors.append(reply.ancestor(identity))
+            return tuple(ancestors)
+        except PlaywrightError as error:
+            raise _element_gone(error) from error
+        finally:
+            for child in children:
+                await dispose_handle(child)
+            await dispose_handle(array)
 
     async def scan_candidates(self, query: CandidateQuery) -> CandidateScan:
         return await scan_candidates(self._page, self._scripts, query, self._pin)
@@ -369,6 +408,33 @@ class PlaywrightSession:
         except PlaywrightError as error:
             raise page_read_error(error) from error
 
+    async def element_view(
+        self, element: ElementRef, *, mask: Sequence[Selector], timeout_ms: int
+    ) -> ElementView:
+        try:
+            raw = await self._handle(element).evaluate(self._scripts.element_view)
+        except PlaywrightError as error:
+            raise _element_gone(error) from error
+        geometry = ElementGeometry.model_validate(raw)
+        if not geometry.connected:
+            raise TargetNotFound("the element is no longer on the page", reason="detached")
+        clip, box = view_clip(geometry)
+        locators = [build_locator(self._page, selector) for selector in mask]
+        locators.append(self._page.locator(_PASSWORD_FIELDS))
+        try:
+            png = await self._page.screenshot(
+                type="png",
+                animations="disabled",
+                caret="hide",
+                mask=locators,
+                timeout=timeout_ms,
+                full_page=True,
+                clip={"x": clip.x, "y": clip.y, "width": clip.width, "height": clip.height},
+            )
+        except PlaywrightError as error:
+            raise page_read_error(error) from error
+        return ElementView(png=png, box=box)
+
     async def dom_snapshot(self) -> str:
         try:
             return await self._page.content()
@@ -388,6 +454,16 @@ class PlaywrightSession:
         return self._handle(element)
 
     # Internals.
+
+    async def _identity(self, handle: ElementHandle) -> ElementIdentity:
+        """An unconfirmed identity for a handle the adapter holds, such as an ancestor."""
+        raw = await read_identity(handle, self._scripts)
+        self._observed("identity", raw.model_dump(by_alias=True))
+        return ElementIdentity(tag=raw.tag, input_type=raw.type, role=raw.role, name=raw.name)
+
+    def _observed(self, source: str, payload: object) -> None:
+        if self._replies is not None:
+            self._replies(source, payload)
 
     def _pin(self, handle: ElementHandle) -> ElementRef:
         self._pinned += 1
@@ -454,3 +530,18 @@ class PlaywrightSession:
 
 def _left(deadline: float) -> int:
     return max(1, round((deadline - time.monotonic()) * 1000))
+
+
+def _element_gone(error: PlaywrightError) -> Exception:
+    if is_closed(error):
+        return browser_closed(error)
+    return TargetNotFound("the element is no longer on the page", reason="detached")
+
+
+async def dispose_handle(handle: JSHandle) -> None:
+    """Release a page handle; one whose document was replaced or whose page closed holds nothing."""
+    try:
+        await handle.dispose()
+    except PlaywrightError as error:
+        if not (is_closed(error) or is_context_destroyed(error)):
+            raise

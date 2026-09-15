@@ -80,6 +80,25 @@ class ChangeKind(StrEnum):
 
     MANUAL_EDIT = "manual_edit"
     ROLLBACK = "rollback"
+    HEAL = "heal"
+
+
+class VerificationStrength(StrEnum):
+    """How much a step's checkpoints prove about which element was acted on (ADR 0010)."""
+
+    STRONG = "strong"
+    WEAK = "weak"
+    """Only ``url_matches`` or ``field_has_value``: a look-alike can pass them."""
+    NONE = "none"
+
+
+class PromotionPolicy(StrEnum):
+    """When a verified heal becomes a new workflow version (ADR 0013)."""
+
+    IMMEDIATE = "immediate"
+    """As soon as a succeeded run verified it."""
+    AFTER_N_SUCCESSES = "after_n_successes"
+    """Once enough succeeded runs verified it; until then it is tried first as a pending patch."""
 
 
 class AriaRole(StrEnum):

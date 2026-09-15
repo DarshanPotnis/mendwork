@@ -34,6 +34,7 @@ from benchmarks.chaos.rung3_eval import cases_for, run_seed
 from benchmarks.chaos.workflow_targets import load_workflow_targets
 from mendwork.apps.cli.wiring import healing_config
 from mendwork.apps.portal.server import PortalServer
+from mendwork.engine.domain.enums import VerificationStrength
 from mendwork.engine.domain.fingerprint import Fingerprint
 from mendwork.engine.domain.steps import Step, step_target
 from mendwork.engine.healing.config import HealingConfig
@@ -44,7 +45,7 @@ from mendwork.engine.healing.pick_rules import (
     surviving_identity_attributes,
 )
 from mendwork.engine.ports.candidate_types import LiveCandidate
-from mendwork.engine.safety.heal_policy import VerificationStrength, verification_strength
+from mendwork.engine.safety.heal_policy import verification_strength
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.observability import configure_logging
 from mendwork.settings import Settings

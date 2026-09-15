@@ -126,6 +126,7 @@ def config(**overrides: object) -> ReplayConfig:
         "run_timeout_ms": 60_000,
         "settle_timeout_ms": 100,
         "settle_quiet_frames": 2,
+        "scope_ancestors_max": 6,
         "retry": RetryPolicy(
             max_attempts=3,
             initial_delay_ms=500,

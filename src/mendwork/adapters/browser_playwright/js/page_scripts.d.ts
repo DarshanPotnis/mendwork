@@ -156,6 +156,20 @@ interface MendworkScopeFacts {
   rowHeader: string | null;
 }
 
+/** What element_view.js reports: an element's box and the page's size, in CSS pixels. */
+interface MendworkElementGeometry {
+  /** Relative to the whole document, not the viewport. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  documentWidth: number;
+  documentHeight: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  connected: boolean;
+}
+
 // Healing.
 
 /** Which elements a candidate scan looks for, and how many it returns at most. */

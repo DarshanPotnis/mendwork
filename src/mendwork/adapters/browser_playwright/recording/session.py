@@ -7,8 +7,8 @@ only for fields it has already decided are not credential fields.
 
 from typing import Final
 
-from playwright.async_api import ElementHandle, JSHandle, Page
 from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import Page
 
 from mendwork.adapters.browser_playwright.egress.log import EgressLog
 from mendwork.adapters.browser_playwright.errors import (
@@ -18,24 +18,21 @@ from mendwork.adapters.browser_playwright.errors import (
     page_read_error,
 )
 from mendwork.adapters.browser_playwright.facts import FACTS_REQUEST, FactsReply
-from mendwork.adapters.browser_playwright.identity import read_identity
 from mendwork.adapters.browser_playwright.observations import Observations
 from mendwork.adapters.browser_playwright.recording.channel import RecorderChannel
 from mendwork.adapters.browser_playwright.recording.messages import (
-    SCOPE_REPLIES,
     ControlReply,
     FieldTextReply,
 )
 from mendwork.adapters.browser_playwright.recording.navigation_log import NavigationLog
 from mendwork.adapters.browser_playwright.scripts import PageScripts
-from mendwork.adapters.browser_playwright.session import PlaywrightSession
+from mendwork.adapters.browser_playwright.session import PlaywrightSession, dispose_handle
 from mendwork.adapters.browser_playwright.tracing import TraceRecorder
 from mendwork.engine.errors import TargetNotFound
-from mendwork.engine.ports.browser_types import ElementIdentity, ElementRef, WatchId
+from mendwork.engine.ports.browser_types import ElementRef, WatchId
 from mendwork.engine.ports.element_types import ElementFacts
 from mendwork.engine.ports.recording import StopSignal
 from mendwork.engine.ports.recording_types import (
-    AncestorFacts,
     CaptureRef,
     FieldText,
     Landmark,
@@ -73,7 +70,12 @@ class PlaywrightRecordingSession(PlaywrightSession):
         # A person drives a recording's browser, so it has no egress gateway and its log stays
         # empty; the recording's verification replay is held to the policy.
         super().__init__(
-            page=page, scripts=scripts, observations=observations, tracer=tracer, egress=EgressLog()
+            page=page,
+            scripts=scripts,
+            observations=observations,
+            tracer=tracer,
+            egress=EgressLog(),
+            replies=channel.observe,
         )
         self._channel = channel
         self._navigation = navigation
@@ -131,35 +133,6 @@ class PlaywrightRecordingSession(PlaywrightSession):
         self._channel.observe("element_facts", raw)
         return FactsReply.model_validate(raw).facts()
 
-    async def scope_ancestors(
-        self, element: ElementRef, *, limit: int
-    ) -> tuple[AncestorFacts, ...]:
-        handle = self._handle(element)
-        try:
-            array = await handle.evaluate_handle(self._scripts.element_ancestors, limit)
-        except PlaywrightError as error:
-            raise _detached(error) from error
-        children: list[JSHandle] = []
-        try:
-            raw = await self._page.evaluate(self._scripts.scope_facts, array)
-            self._channel.observe("scope_facts", raw)
-            replies = SCOPE_REPLIES.validate_python(raw)
-            properties = await array.get_properties()
-            children = list(properties.values())
-            ancestors: list[AncestorFacts] = []
-            for position, reply in enumerate(replies):
-                child = properties.get(str(position))
-                ancestor = child.as_element() if child is not None else None
-                identity = await self._identity(ancestor) if ancestor is not None else None
-                ancestors.append(reply.ancestor(identity))
-            return tuple(ancestors)
-        except PlaywrightError as error:
-            raise _detached(error) from error
-        finally:
-            for child in children:
-                await _dispose(child)
-            await _dispose(array)
-
     async def read_field_text(self, element: ElementRef) -> FieldText:
         raw = await self._evaluate_on(element, self._scripts.field_text, None)
         self._channel.observe("field_text", raw)
@@ -199,7 +172,7 @@ class PlaywrightRecordingSession(PlaywrightSession):
                     landmarks.append(Landmark(role=identity.role, name=identity.name))
         finally:
             for handle in handles:
-                await _dispose(handle)
+                await dispose_handle(handle)
         texts = await self._page.locator(LIVE_REGIONS).filter(visible=True).all_inner_texts()
         self._channel.observe("live_regions", texts)
         return PageObservation(
@@ -209,11 +182,6 @@ class PlaywrightRecordingSession(PlaywrightSession):
             landmarks=tuple(landmarks),
             live_texts=tuple(texts),
         )
-
-    async def _identity(self, handle: ElementHandle) -> ElementIdentity:
-        raw = await read_identity(handle, self._scripts)
-        self._channel.observe("identity", raw.model_dump(by_alias=True))
-        return ElementIdentity(tag=raw.tag, input_type=raw.type, role=raw.role, name=raw.name)
 
     async def _control(self, request: dict[str, object]) -> ControlReply | None:
         try:
@@ -240,12 +208,3 @@ def _detached(error: PlaywrightError) -> Exception:
     return TargetNotFound(
         "the recorded element is no longer on the page", reason="detached_while_recording"
     )
-
-
-async def _dispose(handle: JSHandle) -> None:
-    try:
-        await handle.dispose()
-    except PlaywrightError as error:
-        # A handle whose document was replaced or whose page closed holds nothing.
-        if not (is_closed(error) or is_context_destroyed(error)):
-            raise

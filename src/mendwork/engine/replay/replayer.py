@@ -6,6 +6,9 @@ leaves no artifacts behind. Then the run is claimed for this process, the exact 
 is saved beside its record (``workflow.json``, whose digest the record keeps), and its first
 execution runs (``run_execution``). From then on every outcome ends with a final record and a
 ``run_finished`` event, an interrupt included.
+
+A run told where its version came from (a ``WorkflowSource``) reports what came of its verified
+heals, and when the source saves heals and a patcher is configured, they become versions (ADR 0013).
 """
 
 import asyncio
@@ -13,10 +16,12 @@ from collections.abc import Mapping
 
 import structlog
 
+from mendwork.engine.domain.patches import WorkflowSource
 from mendwork.engine.domain.runs import Run, RunSegmentKind, RunStatus
 from mendwork.engine.domain.workflow import WorkflowVersion
 from mendwork.engine.errors import SecretUnavailable
 from mendwork.engine.healing.model_rung import ModelRung
+from mendwork.engine.patching.patcher import Patcher
 from mendwork.engine.ports.artifacts import ArtifactStore
 from mendwork.engine.ports.browser import BrowserLauncher
 from mendwork.engine.ports.clock import Clock
@@ -63,6 +68,7 @@ class Replayer:
         egress: EgressPolicy,
         resolver: HostResolver,
         model: ModelRung | None = None,
+        patcher: Patcher | None = None,
     ) -> None:
         self._launcher = launcher
         self._artifacts = artifacts
@@ -77,8 +83,15 @@ class Replayer:
         self._egress = egress
         self._resolver = resolver
         self._model = model
+        self._patcher = patcher
 
-    async def run(self, workflow: WorkflowVersion, supplied_inputs: Mapping[str, str]) -> Run:
+    async def run(
+        self,
+        workflow: WorkflowVersion,
+        supplied_inputs: Mapping[str, str],
+        *,
+        source: WorkflowSource | None = None,
+    ) -> Run:
         """Replay a workflow version with the given inputs.
 
         Raises RunInputError, SecretUnavailable, or EgressBlocked before the run starts. Once it
@@ -114,6 +127,7 @@ class Replayer:
             secrets=workflow.secrets,
             steps=steps_so_far(workflow, ()),
             segments=(new_segment(RunSegmentKind.RUN, started_at, self._egress),),
+            source=source,
         )
         journal = RunJournal(
             artifacts=self._artifacts,
@@ -128,6 +142,8 @@ class Replayer:
             await self._begin(workflow, snapshot, journal, emitter)
             log.info("run_started", step_count=len(workflow.steps))
             chooser = self._model.for_run(self._clock) if self._model is not None else None
+            patcher = self._patcher if source is not None else None
+            saves = patcher is not None and source is not None and source.saves_heals
             execution = Execution(
                 run_id=run_id,
                 workflow=workflow,
@@ -138,6 +154,8 @@ class Replayer:
                 emitter=emitter,
                 log=log,
                 chooser=chooser,
+                first_tries=await patcher.first_tries(workflow) if saves and patcher else {},
+                patcher=patcher,
             )
             return await execute(self._ports(), execution)
 

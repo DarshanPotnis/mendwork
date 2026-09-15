@@ -37,7 +37,7 @@ async def pinned(page: FakeRecordingBrowser) -> ElementRef:
 
 async def reason_of(page: FakeRecordingBrowser) -> str:
     with pytest.raises(RecordingUnusable) as caught:
-        await TargetRecorder(context(page)).record(await pinned(page))
+        await TargetRecorder(context(page).targets()).record(await pinned(page))
     return str(caught.value.context["reason"])
 
 
@@ -47,7 +47,7 @@ async def test_selectors_that_find_the_element_are_kept_and_the_rest_dropped() -
     page.elements["other"] = FakeElement(tag="button", role="button", name="Other")
     page.finds[css("#save-button")] = "other"
 
-    recorded = await TargetRecorder(context(page)).record(await pinned(page))
+    recorded = await TargetRecorder(context(page).targets()).record(await pinned(page))
 
     assert recorded.fingerprint.selectors == (
         by_test_id("save"),
@@ -85,7 +85,7 @@ async def test_an_ambiguous_candidate_is_scoped_to_its_row() -> None:
     assert scoped is not None
     page.finds[scoped] = "view"
 
-    recorded = await TargetRecorder(context(page)).record(await pinned(page))
+    recorded = await TargetRecorder(context(page).targets()).record(await pinned(page))
 
     assert recorded.fingerprint.selectors == (
         role("button", "View order PO-1042"),
@@ -109,7 +109,7 @@ async def test_an_ambiguous_scope_is_scoped_again_up_to_two_levels() -> None:
     page.finds[first] = (2,)
     page.finds[second] = "view"
 
-    recorded = await TargetRecorder(context(page)).record(await pinned(page))
+    recorded = await TargetRecorder(context(page).targets()).record(await pinned(page))
 
     assert second in recorded.fingerprint.selectors
 
@@ -123,7 +123,7 @@ async def test_a_candidate_no_scope_makes_unique_is_dropped_as_ambiguous() -> No
     page.elements["other"] = FakeElement(tag="button", role="button", name="View order PO-1043")
     page.finds[scoped_elsewhere] = "other"
 
-    recorded = await TargetRecorder(context(page)).record(await pinned(page))
+    recorded = await TargetRecorder(context(page).targets()).record(await pinned(page))
 
     assert [(item.reason, item.level_counts) for item in recorded.dropped] == [
         (DropReason.AMBIGUOUS, (12,))

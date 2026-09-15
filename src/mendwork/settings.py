@@ -29,6 +29,7 @@ from mendwork.engine.healing.config import acceptance_problems
 from mendwork.engine.safety.redaction import DEFAULT_SENSITIVE_KEY_FRAGMENTS
 from mendwork.settings_egress import EgressSettings
 from mendwork.settings_model import ModelSettings
+from mendwork.settings_patching import PatchingSettings
 
 ENV_PREFIX: Final = "MENDWORK_"
 # Danger words mark stored data changing or other people affected. "remove" and its kin are
@@ -181,7 +182,7 @@ class _OwnDotEnvSource(PydanticBaseSettingsSource):
         }
 
 
-class Settings(EgressSettings, ModelSettings):
+class Settings(EgressSettings, ModelSettings, PatchingSettings):
     """Runtime configuration for every Mendwork process.
 
     Rung 3's model provider settings are declared in ``settings_model``, and the egress policy's

@@ -24,12 +24,16 @@ PACKAGES: Final = (
     "src/mendwork/engine/safety/",
     "src/mendwork/engine/recording/",
     "src/mendwork/engine/healing/",
+    "src/mendwork/engine/patching/",
+    "src/mendwork/engine/reporting/",
 )
 UNIT_TESTS: Final = (
     "tests/unit/replay",
     "tests/unit/recording",
     "tests/unit/safety",
     "tests/unit/healing",
+    "tests/unit/patching",
+    "tests/unit/reporting",
     "tests/unit/test_observability.py",
 )
 

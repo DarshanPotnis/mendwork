@@ -50,7 +50,7 @@ async def capture_field(
             "the page navigated before a field's change could be recorded",
         )
     try:
-        target = await TargetRecorder(context).record(element)
+        target = await TargetRecorder(context.targets()).record(element)
         if isinstance(capture, FillCapture):
             return await _fill(context, capture, element, target, index=index, taken=taken)
         return await _select(context, capture, element, target, index=index, taken=taken)

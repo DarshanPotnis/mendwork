@@ -4,26 +4,17 @@ Presentation only: every fact shown comes from the run's record and its saved wo
 """
 
 from pathlib import Path
-from typing import Final
 
 from mendwork.apps.cli.heal_words import INDENT
 from mendwork.apps.cli.human_output import render_summary
-from mendwork.engine.domain.approvals import ProposalOutcome, ProposalRecord
+from mendwork.engine.domain.approvals import ProposalRecord
 from mendwork.engine.domain.heals import HealProposal
 from mendwork.engine.domain.runs import ArtifactName, Run, RunStatus
 from mendwork.engine.domain.steps import step_target
 from mendwork.engine.domain.targets import IdentityReport
 from mendwork.engine.domain.workflow import WorkflowVersion
+from mendwork.engine.reporting.words import PROPOSAL_OUTCOME_WORDS
 from mendwork.engine.safety.approvals import find_proposal
-
-_OUTCOME_WORDS: Final = {
-    ProposalOutcome.ACTED_VERIFIED: "acted on the approved element, and its checkpoints passed",
-    ProposalOutcome.ACTED_UNVERIFIED: "acted on, but the step did not pass; check what it did",
-    ProposalOutcome.NOT_NEEDED: "not needed: the recorded selectors found the recorded element",
-    ProposalOutcome.STALE: "stale, so nothing was acted on",
-    ProposalOutcome.INTERRUPTED: "interrupted before the approved step finished",
-    ProposalOutcome.NOT_RESUMED: "approved, but the run stopped before it resumed",
-}
 
 
 def render_show(run: Run, workflow: WorkflowVersion | None, runs_directory: Path) -> str:
@@ -87,7 +78,7 @@ def outcome_words(item: ProposalRecord) -> str | None:
     """What came of an approval, in words, with the detail that explains it."""
     if item.outcome is None:
         return None
-    words = _OUTCOME_WORDS[item.outcome]
+    words = PROPOSAL_OUTCOME_WORDS[item.outcome]
     return f"{words}: {item.detail}" if item.detail else words
 
 

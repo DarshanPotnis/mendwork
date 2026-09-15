@@ -28,6 +28,7 @@ class PageScripts:
     scope_facts: str
     field_text: str
     extract_candidates: str
+    element_view: str
 
     @classmethod
     def load(cls) -> "PageScripts":
@@ -38,6 +39,7 @@ class PageScripts:
             return (directory / f"{name}.js").read_text(encoding="utf-8")
 
         return cls(
+            element_view=read("element_view"),
             page_state=read("page_state"),
             element_keys=read("element_keys"),
             element_identity=read("element_identity"),

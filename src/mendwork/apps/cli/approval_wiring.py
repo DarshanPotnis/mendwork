@@ -12,6 +12,7 @@ from mendwork.adapters.system.randomness import SystemRandomSource
 from mendwork.adapters.system.timer import AsyncioTimer
 from mendwork.apps.cli.wiring import replay_config
 from mendwork.engine.healing.model_rung import ModelRung
+from mendwork.engine.patching.patcher import Patcher
 from mendwork.engine.ports.browser import BrowserLauncher
 from mendwork.engine.ports.events import EventSink
 from mendwork.engine.ports.resolver import HostResolver
@@ -55,8 +56,12 @@ def build_resumer(
     resolver: HostResolver,
     scrubber: SecretScrubber,
     model: ModelRung | None = None,
+    patcher: Patcher | None = None,
 ) -> Resumer:
-    """A Resumer that executes approved runs exactly as ``mendwork run`` executes new ones."""
+    """A Resumer that executes approved runs exactly as ``mendwork run`` executes new ones.
+
+    ``patcher`` saves the heals a resumed run verifies, the approved one included (ADR 0013).
+    """
     ports = ExecutionPorts(
         launcher=launcher,
         artifacts=artifacts,
@@ -67,4 +72,4 @@ def build_resumer(
         config=replay_config(settings),
         egress=egress,
     )
-    return Resumer(ports=ports, events=events, resolver=resolver, model=model)
+    return Resumer(ports=ports, events=events, resolver=resolver, model=model, patcher=patcher)

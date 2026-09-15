@@ -146,15 +146,18 @@ def _no_network(pytestconfig: pytest.Config) -> Iterator[None]:
 
 @pytest.fixture(autouse=True, scope="session")
 def _default_artifacts_directory(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
-    """A command not given ``--artifacts-dir`` writes under this process's own temporary directory.
+    """A command not given ``--artifacts-dir`` or ``--store-dir`` writes under this process's own
+    temporary directory.
 
     Every pytest-xdist worker has its own base temporary directory, so no two workers can share a
-    default artifacts directory, audit log, or usage ledger, and no test writes the repository's
-    ``artifacts/`` (ADR 0012). Every test that runs a command still passes its own directory.
+    default artifacts directory, audit log, usage ledger, or workflow store, and no test writes the
+    repository's ``artifacts/`` or ``workflow-store/`` (ADR 0012, ADR 0013). Every test that runs a
+    command still passes its own directories, because tests in one worker share these defaults.
     """
-    default = tmp_path_factory.getbasetemp() / "default-artifacts"
+    base = tmp_path_factory.getbasetemp()
     with pytest.MonkeyPatch.context() as patch:
-        patch.setenv("MENDWORK_ARTIFACTS_DIR", str(default))
+        patch.setenv("MENDWORK_ARTIFACTS_DIR", str(base / "default-artifacts"))
+        patch.setenv("MENDWORK_WORKFLOW_STORE_DIR", str(base / "default-workflow-store"))
         yield
 
 

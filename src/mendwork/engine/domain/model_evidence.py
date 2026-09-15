@@ -40,10 +40,13 @@ class ModelUsageTotals(DomainModel):
     calls: int = Field(default=0, ge=0)
     input_tokens: TokenCount = 0
     output_tokens: TokenCount = 0
+    """Tokens of the calls whose provider reported both counts; other calls add nothing here."""
     latency_ms: int = Field(default=0, ge=0)
     estimated_cost_usd: Usd = Decimal(0)
     """The priced calls' estimated cost; unpriced calls are counted, not guessed."""
     unpriced_calls: int = Field(default=0, ge=0)
+    unreported_token_calls: int = Field(default=0, ge=0)
+    """Calls whose provider did not report both token counts: counted, never read as 0 tokens."""
 
     def combined(self, other: "ModelUsageTotals") -> "ModelUsageTotals":
         """These totals and another execution's, added up."""
@@ -54,17 +57,20 @@ class ModelUsageTotals(DomainModel):
             latency_ms=self.latency_ms + other.latency_ms,
             estimated_cost_usd=self.estimated_cost_usd + other.estimated_cost_usd,
             unpriced_calls=self.unpriced_calls + other.unpriced_calls,
+            unreported_token_calls=self.unreported_token_calls + other.unreported_token_calls,
         )
 
     def plus(self, usage: ModelUsage) -> "ModelUsageTotals":
         """These totals with one more call."""
+        reported = usage.input_tokens is not None and usage.output_tokens is not None
         return ModelUsageTotals(
             calls=self.calls + 1,
-            input_tokens=self.input_tokens + (usage.input_tokens or 0),
-            output_tokens=self.output_tokens + (usage.output_tokens or 0),
+            input_tokens=self.input_tokens + ((usage.input_tokens or 0) if reported else 0),
+            output_tokens=self.output_tokens + ((usage.output_tokens or 0) if reported else 0),
             latency_ms=self.latency_ms + usage.latency_ms,
             estimated_cost_usd=self.estimated_cost_usd + (usage.estimated_cost_usd or Decimal(0)),
             unpriced_calls=self.unpriced_calls + (1 if usage.estimated_cost_usd is None else 0),
+            unreported_token_calls=self.unreported_token_calls + (0 if reported else 1),
         )
 
 

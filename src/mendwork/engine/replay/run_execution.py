@@ -9,6 +9,10 @@ The journal keeps the record on disk current while steps run. An interrupt (the 
 stops the step in progress where it is: its result is recorded without touching the browser again,
 the run ends ``cancelled`` or ``needs_review`` (``safety.interruption``), and the cancellation is
 re-raised to the caller once the record is written.
+
+When the execution saves heals (ADR 0013), its verified heals are promoted before the final record
+is written: a version is published before anything records that it was, and an interrupt waits for
+promotion to finish, so a heal is never half-decided.
 """
 
 import asyncio
@@ -20,8 +24,9 @@ import structlog
 
 from mendwork.engine.domain.approvals import VerifiedHealRecord
 from mendwork.engine.domain.heals import HealProposal
-from mendwork.engine.domain.identifiers import InputName
+from mendwork.engine.domain.identifiers import InputName, StepId
 from mendwork.engine.domain.model_evidence import ModelUsageTotals
+from mendwork.engine.domain.patches import PatchOutcome
 from mendwork.engine.domain.runs import (
     STOPPING_STATUSES,
     ErrorCategory,
@@ -35,6 +40,7 @@ from mendwork.engine.domain.runs import (
 from mendwork.engine.domain.workflow import WorkflowVersion
 from mendwork.engine.errors import InfrastructureError, RunTimedOut
 from mendwork.engine.healing.model_rung import ModelChooser
+from mendwork.engine.patching.patcher import Patcher
 from mendwork.engine.ports.artifacts import ArtifactStore
 from mendwork.engine.ports.browser import BrowserLauncher
 from mendwork.engine.ports.clock import Clock
@@ -48,6 +54,7 @@ from mendwork.engine.replay.deadlines import Deadline
 from mendwork.engine.replay.emitter import RunEmitter
 from mendwork.engine.replay.journal import RunJournal, steps_so_far
 from mendwork.engine.replay.navigation_guard import NavigationGuard
+from mendwork.engine.replay.pending_first_try import FirstTry
 from mendwork.engine.replay.reports import error_report
 from mendwork.engine.replay.step_runner import StepRunner
 from mendwork.engine.replay.values import ValueResolver
@@ -111,6 +118,11 @@ class Execution:
     proposals_made: int = 0
     downloads: frozenset[str] = frozenset()
     """Downloads earlier executions kept, so none is replaced."""
+    first_tries: Mapping[StepId, tuple[FirstTry, ...]] = field(default_factory=dict)
+    """Pending patches' targets, tried once before a step's heal ladder (ADR 0013)."""
+    patcher: Patcher | None = None
+    """Decides what becomes of the run's verified heals when it finishes; None when no workflow
+    store is configured."""
 
 
 async def execute(
@@ -148,6 +160,7 @@ async def execute(
                 chooser=execution.chooser,
                 segment=execution.segment,
                 downloads=execution.downloads,
+                first_tries=execution.first_tries,
             )
             runner.seed(execution.verified, proposals_made=execution.proposals_made)
             timeout = await _run_steps(ports, execution, runner, run_deadline, results, opening)
@@ -177,6 +190,10 @@ async def execute(
     else:
         status, final_error = _outcome(execution.workflow, results, error)
     finished = _final(ports, execution, runner, results, status, final_error, started)
+    if execution.patcher is not None and unexpected is None:
+        patches, late = await _promote(execution.patcher, finished, execution.workflow)
+        finished = finished.model_copy(update={"patches": patches})
+        interrupt = interrupt or late
     await execution.journal.write(finished)
     await execution.emitter.run_finished(finished)
     execution.log.info(
@@ -191,6 +208,20 @@ async def execute(
             error_type=type(unexpected).__name__,
         ) from unexpected
     return finished
+
+
+async def _promote(
+    patcher: Patcher, record: Run, workflow: WorkflowVersion
+) -> tuple[tuple[PatchOutcome, ...], asyncio.CancelledError | None]:
+    """What came of the run's heals, and an interrupt that arrived while it was decided.
+
+    The interrupt waits for promotion to finish, so a publish is never abandoned halfway.
+    """
+    task = asyncio.ensure_future(patcher.promote(record, workflow))
+    try:
+        return await asyncio.shield(task), None
+    except asyncio.CancelledError as cancelled:
+        return await task, cancelled
 
 
 async def _run_steps(

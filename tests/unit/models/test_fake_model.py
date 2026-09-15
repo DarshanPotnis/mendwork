@@ -50,3 +50,9 @@ async def test_an_unusable_reply_is_invalid_output_and_an_empty_script_is_an_err
     assert invalid.value.context["problem"] == "it was not exactly one JSON object"
     assert invalid.value.context["excerpt"] == "Sure, number one!"
     assert exhausted.value.context["reason"] == "script_exhausted"
+
+
+async def test_the_fake_reports_no_token_counts_unless_a_test_gives_them() -> None:
+    result = await FakeModel([choice_json(1)]).choose_candidate(REQUEST)
+
+    assert (result.usage.input_tokens, result.usage.output_tokens) == (None, None)

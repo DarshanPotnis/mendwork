@@ -266,6 +266,8 @@ def run_with(
             str(workflow),
             "--artifacts-dir",
             str(artifacts),
+            "--store-dir",
+            str(tmp_path / "workflow-store"),
             "--input",
             f"site_url={site}app.html",
         ],

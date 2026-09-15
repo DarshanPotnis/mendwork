@@ -114,6 +114,8 @@ async def interrupt(site: str, tmp_path: Path, *, risk: str, signals: int) -> In
         "json",
         "--artifacts-dir",
         str(artifacts),
+        "--store-dir",
+        str(tmp_path / "workflow-store"),
         "--input",
         f"site_url={site}app.html",
         stdout=asyncio.subprocess.PIPE,

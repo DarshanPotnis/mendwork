@@ -114,7 +114,10 @@ mendwork/
 │   │   ├── verification/
 │   │   ├── safety/               # risk, approvals, egress (rules, addresses, blocks), interruption,
 │   │   │                         #   budgets, redaction, secret scrubbing and registration
-│   │   ├── patching/
+│   │   ├── patching/             # eligibility, heal change records, capture, rebase, promotion, the
+│   │   │                         #   Patcher, workflow sources, history, diff, import and rollback
+│   │   │                         #   plans, and the words they share (ADR 0013)
+│   │   ├── reporting/            # the run report's view model and its words
 │   │   └── errors.py
 │   ├── adapters/
 │   │   ├── browser_playwright/   # BrowserPort: launcher, session, Rung 0 primitives, tracing
@@ -127,7 +130,9 @@ mendwork/
 │   │   │                         #   shared HTTP transport, circuit breaker, pricing, replies
 │   │   ├── usage_fs/             # UsageLedger: each UTC day's model-call count, in files
 │   │   ├── workflow_yaml/        # strict YAML decoding with line numbers, deterministic encoding
-│   │   ├── storage_fs/           # WorkflowStore on files: one directory per workflow, no-overwrite publish
+│   │   ├── storage_fs/           # WorkflowStore on files: one directory per workflow, no-overwrite publish;
+│   │   │                         #   PendingPatches: <store>/.pending/<workflow_id>.json under flock
+│   │   ├── report_html/          # the run report: escaped markup, inline CSS, data: screenshots, CSP
 │   │   ├── storage_postgres/     # Phase 10
 │   │   ├── artifacts_local/      # ArtifactStore: artifacts/runs/<run_id>/, atomic ordered writes;
 │   │   │                         #   RunRecords: per-run flock claims, records read back
@@ -136,8 +141,8 @@ mendwork/
 │   │   ├── secrets_env/          # SecretResolver: MENDWORK_SECRET_<NAME>
 │   │   └── system/               # Clock, Timer, RandomSource, RunIdGenerator, HostResolver
 │   ├── apps/
-│   │   ├── cli/                  # Typer: validate, schema, record, run, show, approve, reject;
-│   │   │                         #   later history, diff, rollback, bench
+│   │   ├── cli/                  # Typer: validate, schema, record, run, show, approve, reject,
+│   │   │                         #   history, diff, rollback, import; later bench
 │   │   ├── api/                  # Phase 10: FastAPI
 │   │   ├── portal/               # chaos portal server, shared by `make portal` and browser tests
 │   │   └── worker/               # Phase 10
@@ -337,11 +342,13 @@ class HealReport(BaseModel):            # on StepResult
 - **Stopping statuses.** A step fails, or stops for a person: `awaiting_approval` (a heal for an irreversible step) or `needs_review` (an irreversible action on a heal that failed verification, or a run interrupted after dispatching an irreversible action). The run takes the same status; both exit 4. A run interrupted before any irreversible dispatch is `cancelled` and exits 130.
 - **Events** are a discriminated union on `type`, each with `event_version`, `run_id`, a gap-free `sequence` from 1, and a Clock timestamp: `run_started`, `run_resumed` (an approval resumed the run), `step_started`, `target_resolved`, `heal_attempted` (per rung, when it decides), `action_performed` (value kind, never the value), `checkpoint_passed`, `checkpoint_failed`, `heal_verified` (after the checkpoints), `state_restored`, `step_succeeded`, `step_failed` (with the stopping status), `run_finished`.
 - **Errors** carry a category: `step`, or `infrastructure` for `InfrastructureError` and anything unexpected.
+- **Patching** (Phase 8, ADR 0013): a record also carries its `WorkflowSource` (the file given, the stored version it matched, and whether its heals are saved), every `PatchOutcome`, and, for each healed step, the `FoundTarget` its heal was fingerprinted as, with the screenshot and box the report outlines it on.
 
 ### Versions
 
-- **Lineage.** Version 1 has no parent and no change record. Each later version is its parent's number + 1 and records a `ChangeRecord`. A rollback restores at most version − 2.
-- **Deriving children.** Children come only from pure functions, one per change kind: `edit_version` and `roll_back_version`, plus a heal function in Phase 8. They never mutate the parent, keep every step id in order, and take `created_at` from the `Clock` port.
+- **Lineage.** Version 1 has no parent and no change record. Each later version is its parent's number + 1 and records a `ChangeRecord`: a `ManualEdit`, a `Rollback`, or a `HealChange` (§9). A rollback restores at most version − 2.
+- **Deriving children.** Children come only from pure functions, one per change kind: `edit_version`, `roll_back_version`, and `heal_version`. They never mutate the parent, keep every step id in order, and take `created_at` from the `Clock` port. `heal_version` changes only the healed step's target, and refuses a heal whose old target is not the parent's, or an irreversible step's heal without the approval that let it act.
+- **Where versions live.** In a `WorkflowStore` bound to one tenant: on files, `<store>/<workflow_id>/v0001.yaml`, published without overwriting (ADR 0006). A workflow file given to `mendwork run` is matched to them by content and never written (§9).
 
 **Run states:** `QUEUED → RUNNING → SUCCEEDED | FAILED | CANCELLED | AWAITING_APPROVAL | NEEDS_REVIEW`; `AWAITING_APPROVAL → RUNNING` when a proposal is approved (the run resumes), `→ FAILED` when it is rejected, and `→ CANCELLED` when an approval is recorded but the run stops before it resumes.
 
@@ -371,6 +378,7 @@ class HealReport(BaseModel):            # on StepResult
     - `EgressBlocked`: the egress policy refused a navigation, a document, or a connection
   - `BudgetExceeded`
   - `VersionConflict`: a version number is taken, or its parent is missing
+  - `UnknownWorkflowVersion`: the workflow store has no versions of the workflow, or not the one asked for
   - `WorkflowValidationError`, which carries every `ValidationIssue` (path, message, line, column, step id)
     - `UnsupportedSchemaVersion`
   - `RunInputError`, which carries every issue with the supplied inputs
@@ -378,9 +386,10 @@ class HealReport(BaseModel):            # on StepResult
   - `InfrastructureError`
     - `BrowserUnavailable`
     - `ArtifactStoreUnavailable`
+    - `WorkflowStoreUnavailable`: workflow versions or pending patches could not be read or written
     - `AuditLogCorrupt`: the audit log cannot be read or written, or its chain is broken
 
-**Ports so far:** `Clock`, `WorkflowStore`, and from Phase 3 `BrowserLauncher`/`BrowserPort`, `ArtifactStore`, `EventSink`, `SecretResolver`, and the small ports that keep the engine deterministic: `Timer` (monotonic time and backoff pauses), `RandomSource` (jitter), and `RunIdGenerator`. From Phase 4, recording adds `RecordingLauncher`/`RecordingBrowser` (a BrowserPort plus page events, element facts, and the hold-back handshake), `RecordingObserver`, and `StopSignal`. From Phase 6, `ModelPort` (a numbered choice in, a choice or null out) and `UsageLedger` (each UTC day's model-call count). From Phase 7, `HostResolver` (a host name's addresses, for the egress policy), `RunRecords` (claiming a run for one process, and reading its record and workflow snapshot back), and `AuditLog` (append-only, chained decisions); `BrowserLauncher.session` takes the run's `EgressPolicy`, and `BrowserPort.take_egress_blocks` reports what the browser-side layers refused. A store instance is bound to one tenant when it is constructed, so its methods take no workspace. From Phase 5, `BrowserPort` also reads `element_facts` (moved up from the recording port) and `scan_candidates` for healing. Port data are plain models; no Playwright type crosses a port.
+**Ports so far:** `Clock`, `WorkflowStore`, and from Phase 3 `BrowserLauncher`/`BrowserPort`, `ArtifactStore`, `EventSink`, `SecretResolver`, and the small ports that keep the engine deterministic: `Timer` (monotonic time and backoff pauses), `RandomSource` (jitter), and `RunIdGenerator`. From Phase 4, recording adds `RecordingLauncher`/`RecordingBrowser` (a BrowserPort plus page events, element facts, and the hold-back handshake), `RecordingObserver`, and `StopSignal`. From Phase 6, `ModelPort` (a numbered choice in, a choice or null out) and `UsageLedger` (each UTC day's model-call count). From Phase 7, `HostResolver` (a host name's addresses, for the egress policy), `RunRecords` (claiming a run for one process, and reading its record and workflow snapshot back), and `AuditLog` (append-only, chained decisions); `BrowserLauncher.session` takes the run's `EgressPolicy`, and `BrowserPort.take_egress_blocks` reports what the browser-side layers refused. A store instance is bound to one tenant when it is constructed, so its methods take no workspace. From Phase 5, `BrowserPort` also reads `element_facts` (moved up from the recording port) and `scan_candidates` for healing. From Phase 8, `PendingPatches` (a workflow's pending patches, held exclusively while a finished run's promotion decides them); `BrowserPort` also takes `element_view` (a masked screenshot of a viewport-sized window around an element, and the element's box in it) and `scope_ancestors` (moved up from the recording port, so a heal's element is recorded exactly as recording records one). Port data are plain models; no Playwright type crosses a port.
 
 ---
 
@@ -431,8 +440,8 @@ class HealReport(BaseModel):            # on StepResult
    5. Watch for the events the step's `download_completed` and `response_received` checkpoints observe.
    6. Perform the action on the pinned element, then let the page settle again.
    7. Evaluate every checkpoint (§8); a new tab or window fails the step.
-   8. **Pass:** record the `StepResult` and a screenshot, plus a `ChangeRecord` if the step was healed (Phase 8). **Fail:** a SAFE or CAUTION heal that failed verification is recovered (§8) within its attempt limit; otherwise record screenshot, DOM snapshot, and trace (unless it could hold a secret) and stop the run.
-5. Finish: set the final status, total model usage and estimated cost, write `run.json`, emit `run_finished`, and apply the patch promotion policy (§9).
+   8. **Pass:** record the `StepResult` and a screenshot; for a healed step, also the target its heal was fingerprinted as, recorded just before the action (§9). **Fail:** a SAFE or CAUTION heal that failed verification is recovered (§8) within its attempt limit; otherwise record screenshot, DOM snapshot, and trace (unless it could hold a secret) and stop the run.
+5. Finish: set the final status and total model usage and estimated cost, apply the patch promotion policy (§9), then write `run.json` with every patch outcome, emit `run_finished`, and write `report.html`. A version is always published before the record that mentions it (ADR 0013).
 
 **The journal.** `run.json` is rewritten atomically when the run starts, after every step, just before an irreversible action is dispatched, and when the run finishes, so a record left by a process that stopped still says which steps finished and whether an irreversible action may have been sent (ADR 0011).
 
@@ -635,17 +644,36 @@ Risk is classified **by consequence**, not by mechanism:
 
 ## 9. Patching and versions
 
-- A verified heal on a SAFE or CAUTION step produces a `ChangeRecord` containing:
-  - old vs new fingerprint
-  - which rung healed it
-  - score and margin, or model usage
-  - artifact links
-- The `ChangeRecord` produces a **child** `WorkflowVersion`. IRREVERSIBLE heals do this only after approval.
-- **Promotion policy** (Settings):
-  - `immediate` persists the new version right away.
-  - `after_n_successes` applies the patch as a first-try candidate on later runs and persists it only after N verified successes.
-- Users can view history, diff any two versions in human-readable form, and roll back to any version.
-- **The key guarantee:** after a heal is promoted, rerunning the same page state uses **zero heals and zero model calls**.
+Details: ADR 0013.
+
+- **What becomes a version.** A heal produces a `HealChange` when its run succeeded, its step passed on the healed element, the element was fingerprinted, and, for an IRREVERSIBLE step, a person's approval acted and was verified. The record holds:
+  - the old and new fingerprints;
+  - the rung, and the checks that verified it with their strength;
+  - score and margin, or the model's usage;
+  - the approval, when there was one;
+  - the evidence: the run, its report, and the step and found screenshots;
+  - the promotion policy and every run that verified it.
+
+  A heal that does not qualify is reported in the run's `patches` with its reason. Weakly verified heals are saved and marked weak everywhere they are shown.
+- **The new target is recorded, not guessed.** Just before the healed element is acted on, the recorder's own `TargetRecorder` derives its selectors and fingerprint and proves they resolve back to it. `heal_version` derives the child: only that step's target changes, every step id is kept, and the step is validated again.
+- **Promotion policy** (`MENDWORK_PATCH_PROMOTION`):
+  - `immediate` publishes each qualifying heal as a version when its run finishes.
+  - `after_n_successes` keeps the heal as a pending patch. Later runs try it first, but only after the recorded target is not found or drifted, never when it is ambiguous. It is published after N succeeded runs verified it.
+  - A patch is placed only on a latest version whose step is exactly the one it was verified against. A heal that a rollback undid is never saved again automatically.
+- **Ordering.** A version is published before anything that says it was: the pending patches are replaced after it, and the run's final record after that. A process that stops in between leaves a valid version, and the next run finds it already applied.
+- **Workflow files are never written.** `mendwork run` matches a file to its workflow's versions in `MENDWORK_WORKFLOW_STORE_DIR` by content.
+  - When every version after the matching one came from a heal or a rollback, the latest runs and its heals are saved.
+  - Otherwise the file runs as written, and saves nothing.
+  - `--exact` always runs the file as written.
+  - `mendwork import` makes a file the latest version after showing the steps it changes and the pending patches it strands, and asking.
+- **History.** `mendwork history` lists versions newest first, with the run behind each heal, each step's checkpoint strength, and the pending patches. `mendwork diff` compares two versions step by step in plain words, with why each heal was made. `mendwork rollback --to <v>` publishes an earlier version's content as a new version, lists everything it undoes, and deletes nothing.
+- **Run report.** `report.html` beside each run's record shows:
+  - a step timeline, each step's checks and their strength;
+  - the healed element outlined on its screenshot, and the recorded versus found fingerprint;
+  - the ladder, the model's cost, approval decisions, and what came of every heal.
+
+  It loads nothing (inline CSS, `data:` images, no script, a Content-Security-Policy that refuses every fetch) and carries no secret (scrubbed text, masked screenshots).
+- **The key guarantee:** after a heal is promoted, rerunning the same page state uses **zero heals and zero model calls**. `tests/integration/test_patching_guarantee.py` counts it on a Rung 3 heal at chaos level 3, and `tests/integration/test_cli_patching_browser.py` counts the model server's requests through the CLI.
 
 ---
 
@@ -776,7 +804,7 @@ Versioned results JSON and a static HTML scorecard. CI runs a small smoke benchm
 | Integration | replayer, recorder, verifier | Against the locally served chaos portal only |
 | Provider contract | model adapters | Recorded HTTP fixtures (`respx`); live calls only via `make live-providers` |
 | API | endpoints, tenant isolation, queue | Real Postgres (CI service container); isolation tests for every resource |
-| E2E | full run, heal, patch, rerun with zero model calls | CLI first, then API |
+| E2E | full run, heal, patch, rerun with zero model calls | In process against ground truth (`test_patching_guarantee.py`) and through the CLI with a counting model server (`test_cli_patching_browser.py`); the API from Phase 10 |
 
 **Coverage gates:** engine ≥ 90% lines, overall ≥ 85%.
 

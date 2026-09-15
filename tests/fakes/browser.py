@@ -23,6 +23,7 @@ from mendwork.engine.ports.browser_types import (
     DownloadObservation,
     ElementIdentity,
     ElementRef,
+    ElementView,
     EqualsText,
     FieldExpectation,
     FieldValueCheck,
@@ -38,7 +39,8 @@ from mendwork.engine.ports.browser_types import (
     WatchKind,
 )
 from mendwork.engine.ports.candidate_types import CandidateQuery, CandidateScan, LiveCandidate
-from mendwork.engine.ports.element_types import ElementFacts
+from mendwork.engine.ports.element_types import Box, ElementFacts
+from mendwork.engine.ports.recording_types import AncestorFacts
 from mendwork.engine.safety.egress import EgressPolicy
 from mendwork.engine.safety.egress_blocks import EgressBlock
 from mendwork.engine.safety.secret_scrub import SecretScrubber
@@ -88,6 +90,10 @@ class FakeBrowser:
     """The element keys a candidate scan finds, in document order."""
     detached: set[str] = field(default_factory=set)
     """Elements whose facts can no longer be read."""
+    ancestors: dict[str, tuple[AncestorFacts, ...]] = field(default_factory=dict)
+    """An element's ancestors, nearest first, as a selector scope is chosen from them."""
+    views: list[str] = field(default_factory=list)
+    """The element keys an element view was taken around, in order."""
     scans: list[CandidateQuery] = field(default_factory=list)
     url: str = "https://portal.example.test/"
     text: str = ""
@@ -321,6 +327,22 @@ class FakeBrowser:
         self.calls.append("screenshot")
         self.masks.append(tuple(mask))
         return b"\x89PNG fake"
+
+    async def element_view(
+        self, element: ElementRef, *, mask: Sequence[Selector], timeout_ms: int
+    ) -> ElementView:
+        key = self._refs[element]
+        if key in self.detached:
+            raise TargetNotFound("the element is no longer on the page", reason="detached")
+        self.calls.append(f"element_view:{key}")
+        self.views.append(key)
+        self.masks.append(tuple(mask))
+        return ElementView(png=b"\x89PNG view", box=Box(x=0.4, y=0.3, width=0.1, height=0.05))
+
+    async def scope_ancestors(
+        self, element: ElementRef, *, limit: int
+    ) -> tuple[AncestorFacts, ...]:
+        return self.ancestors.get(self._refs[element], ())[:limit]
 
     async def dom_snapshot(self) -> str:
         self.calls.append("dom_snapshot")

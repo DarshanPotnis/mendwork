@@ -11,6 +11,7 @@ from mendwork.engine.ports.recording import RecordingBrowser
 from mendwork.engine.ports.timer import Timer
 from mendwork.engine.recording.config import RecordingConfig
 from mendwork.engine.recording.failures import UnusableReason, unusable
+from mendwork.engine.recording.target_context import TargetCaptureContext
 from mendwork.engine.replay.deadlines import Deadline
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.engine.verification.checkpoints import CheckpointContext
@@ -26,6 +27,18 @@ class CaptureContext:
     randomness: RandomSource
     scrubber: SecretScrubber
     log: structlog.stdlib.BoundLogger
+
+    def targets(self) -> TargetCaptureContext:
+        """What fingerprinting a recorded target reads with."""
+        return TargetCaptureContext(
+            browser=self.browser,
+            timer=self.timer,
+            scrubber=self.scrubber,
+            step_timeout_ms=self.config.step_timeout_ms,
+            settle_timeout_ms=self.config.settle_timeout_ms,
+            settle_quiet_frames=self.config.settle_quiet_frames,
+            scope_ancestors_max=self.config.scope_ancestors_max,
+        )
 
     def checkpoints(
         self, *, target: ElementRef | None = None, expectation: FieldExpectation | None = None

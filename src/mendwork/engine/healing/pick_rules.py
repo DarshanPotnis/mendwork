@@ -18,6 +18,7 @@ reverse.
 
 from typing import Final
 
+from mendwork.engine.domain.enums import VerificationStrength
 from mendwork.engine.domain.fingerprint import Fingerprint
 from mendwork.engine.domain.heals import RejectionReason, SafetyRejection
 from mendwork.engine.domain.steps import Step
@@ -25,7 +26,7 @@ from mendwork.engine.healing.config import HealingConfig
 from mendwork.engine.healing.features import nearby_text_similarity
 from mendwork.engine.ports.candidate_types import LiveCandidate
 from mendwork.engine.replay.identity import normalize_name
-from mendwork.engine.safety.heal_policy import VerificationStrength, verification_strength
+from mendwork.engine.safety.heal_policy import verification_strength
 
 IDENTITY_ATTRIBUTES: Final = (
     "id",

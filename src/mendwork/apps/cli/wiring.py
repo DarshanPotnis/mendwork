@@ -36,6 +36,7 @@ from mendwork.adapters.usage_fs.ledger import FileUsageLedger
 from mendwork.engine.errors import MendworkError
 from mendwork.engine.healing.config import FeatureWeights, HealingConfig
 from mendwork.engine.healing.model_rung import ModelChoiceConfig, ModelRung
+from mendwork.engine.patching.patcher import Patcher
 from mendwork.engine.ports.browser import BrowserLauncher
 from mendwork.engine.ports.events import EventSink
 from mendwork.engine.ports.model import ModelPort
@@ -64,6 +65,7 @@ def replay_config(settings: Settings) -> ReplayConfig:
         run_timeout_ms=settings.run_timeout_ms,
         settle_timeout_ms=settings.settle_timeout_ms,
         settle_quiet_frames=settings.settle_quiet_frames,
+        scope_ancestors_max=settings.record_scope_ancestors_max,
         retry=RetryPolicy(
             max_attempts=settings.navigation_max_attempts,
             initial_delay_ms=settings.retry_initial_delay_ms,
@@ -304,11 +306,12 @@ def build_replayer(
     resolver: HostResolver,
     scrubber: SecretScrubber,
     model: ModelRung | None = None,
+    patcher: Patcher | None = None,
 ) -> Replayer:
     """A Replayer on the real clock, timer, randomness, and environment secrets.
 
     Every secret it resolves is registered with ``scrubber``, the process's, so no log line the
-    process writes can carry it (ADR 0011).
+    process writes can carry it (ADR 0011). ``patcher`` saves verified heals (ADR 0013).
     """
     clock = SystemClock()
     return Replayer(
@@ -325,4 +328,5 @@ def build_replayer(
         egress=egress,
         resolver=resolver,
         model=model,
+        patcher=patcher,
     )

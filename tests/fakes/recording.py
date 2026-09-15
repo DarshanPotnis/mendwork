@@ -13,7 +13,6 @@ from mendwork.engine.errors import MendworkError
 from mendwork.engine.ports.browser_types import ElementRef, WatchId
 from mendwork.engine.ports.recording import StopSignal
 from mendwork.engine.ports.recording_types import (
-    AncestorFacts,
     CaptureRef,
     FieldText,
     Landmark,
@@ -36,7 +35,6 @@ class FakeRecordingBrowser(FakeBrowser):
     """Returned by flush_pending."""
     captured: dict[tuple[str, int], str] = field(default_factory=dict)
     """(document, page element key) to the element key in ``elements``."""
-    ancestors: dict[str, tuple[AncestorFacts, ...]] = field(default_factory=dict)
     field_texts: dict[str, FieldText] = field(default_factory=dict)
     title: str = ""
     landmarks: tuple[Landmark, ...] = ()
@@ -96,11 +94,6 @@ class FakeRecordingBrowser(FakeBrowser):
 
     async def finish_capture(self, ref: CaptureRef) -> None:
         self.finished.append(ref)
-
-    async def scope_ancestors(
-        self, element: ElementRef, *, limit: int
-    ) -> tuple[AncestorFacts, ...]:
-        return self.ancestors.get(self._refs[element], ())[:limit]
 
     async def read_field_text(self, element: ElementRef) -> FieldText:
         key = self._refs[element]

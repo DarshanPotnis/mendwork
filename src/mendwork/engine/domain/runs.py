@@ -12,13 +12,12 @@ finishes, so a record left behind by a process that stopped still says what happ
 Step indexes are zero-based in records and events; people see them one-based.
 """
 
-import re
 from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Final, Literal, NewType
+from typing import Final, Literal
 
-from pydantic import Field, JsonValue, StringConstraints
+from pydantic import Field, JsonValue
 
 from mendwork.engine.domain.approvals import ProposalRecord, ResumeState
 from mendwork.engine.domain.base import DomainModel
@@ -31,44 +30,14 @@ from mendwork.engine.domain.identifiers import (
     WorkflowIdField,
 )
 from mendwork.engine.domain.model_evidence import ModelUsageTotals
+from mendwork.engine.domain.patches import FoundTarget, PatchOutcome, WorkflowSource
+from mendwork.engine.domain.run_identifiers import ArtifactName as ArtifactName
+from mendwork.engine.domain.run_identifiers import ArtifactNameField as ArtifactNameField
+from mendwork.engine.domain.run_identifiers import RunId as RunId
+from mendwork.engine.domain.run_identifiers import RunIdField as RunIdField
+from mendwork.engine.domain.run_identifiers import parse_artifact_name as parse_artifact_name
+from mendwork.engine.domain.run_identifiers import parse_run_id as parse_run_id
 from mendwork.engine.domain.targets import TargetEvidence
-
-_RUN_ID: Final = r"\d{8}T\d{6}Z-[0-9a-f]{8}"
-_ARTIFACT_SEGMENT: Final = r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}"
-_ARTIFACT_NAME: Final = rf"{_ARTIFACT_SEGMENT}(?:/{_ARTIFACT_SEGMENT}){{0,3}}"
-
-RunId = NewType("RunId", str)
-"""Sortable and path-safe, such as ``20260911T141502Z-7c1e09ab``: UTC start time plus randomness."""
-ArtifactName = NewType("ArtifactName", str)
-"""A relative path inside one run's artifacts, such as ``steps/04_sign_in.png``.
-
-Every segment starts with a letter or digit, so ``.`` and ``..`` cannot occur and a name
-can never leave its run's directory.
-"""
-
-RunIdField = Annotated[RunId, StringConstraints(pattern=f"^{_RUN_ID}$")]
-ArtifactNameField = Annotated[ArtifactName, StringConstraints(pattern=f"^{_ARTIFACT_NAME}$")]
-
-# fullmatch, not "$": in Python "$" also matches before a trailing newline.
-_RUN_ID_RE: Final = re.compile(_RUN_ID)
-_ARTIFACT_NAME_RE: Final = re.compile(_ARTIFACT_NAME)
-
-
-def parse_run_id(value: str) -> RunId:
-    """Validate an untrusted string as a run id."""
-    if _RUN_ID_RE.fullmatch(value) is None:
-        raise ValueError("a run id looks like 20260911T141502Z-7c1e09ab")
-    return RunId(value)
-
-
-def parse_artifact_name(value: str) -> ArtifactName:
-    """Validate an untrusted string as an artifact name."""
-    if _ARTIFACT_NAME_RE.fullmatch(value) is None:
-        raise ValueError(
-            "an artifact name is 1 to 4 '/'-separated segments of letters, digits, '.', '_' "
-            "and '-', each starting with a letter or digit"
-        )
-    return ArtifactName(value)
 
 
 class RunStatus(StrEnum):
@@ -195,6 +164,8 @@ class StepResult(DomainModel):
     artifacts: StepArtifacts = StepArtifacts()
     heal: HealReport | None = None
     """What the heal ladder did, when the recorded selectors could not safely proceed."""
+    found: FoundTarget | None = None
+    """The verified heal's element, fingerprinted as the recorder would record it (ADR 0013)."""
 
 
 class RunSegmentKind(StrEnum):
@@ -266,6 +237,10 @@ class Run(DomainModel):
     """What an approval needs to resume the run; set when it pauses for approval."""
     paused_steps: tuple[StepResult, ...] = ()
     """Each step result a decision replaced, as it was when the run paused for approval."""
+    source: WorkflowSource | None = None
+    """Where the executed version came from, and whether its heals may become versions."""
+    patches: tuple[PatchOutcome, ...] = ()
+    """What came of each verified heal and pending patch when the run finished (ADR 0013)."""
 
     @property
     def failed_step(self) -> StepResult | None:

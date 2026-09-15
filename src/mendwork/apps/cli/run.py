@@ -1,15 +1,21 @@
 """``mendwork run``: replay a workflow in a real browser and report what happened.
 
-Output channels: progress and the summary (or JSON lines in ``--output json``) go to
-stdout; logs always go to stderr. Exit codes are in ``exit_codes``. A first Ctrl+C (or SIGTERM)
-stops the run where it is and reports its record; a second aborts at once (``interrupts``).
+The file given is never written. It is matched to its workflow's stored versions by content, which
+decides the version that runs and whether the run's verified heals are saved as versions;
+``--exact`` runs the file as written and saves nothing (ADR 0013). When the run ends, its HTML
+report is written beside its record.
+
+Output channels: progress and the summary (or JSON lines in ``--output json``) go to stdout; logs go
+to stderr, and so does the note about the workflow store in ``--output json``. Exit codes are in
+``exit_codes``. A first Ctrl+C (or SIGTERM) stops the run where it is and reports its record; a
+second aborts at once (``interrupts``).
 """
 
 import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import Annotated, NoReturn, TextIO
+from typing import Annotated, Final, NoReturn, TextIO
 
 import typer
 
@@ -26,10 +32,11 @@ from mendwork.apps.cli.commands import (
     OutputOption,
     error_json,
     process_scrubber,
+    read_record,
     report_egress,
     report_error,
     report_inputs,
-    report_interrupted,
+    report_nothing_recorded,
     report_run,
     report_secrets,
     result_line,
@@ -38,6 +45,10 @@ from mendwork.apps.cli.commands import (
 from mendwork.apps.cli.exit_codes import ExitCode, exit_code_for
 from mendwork.apps.cli.human_output import HumanProgress
 from mendwork.apps.cli.interrupts import RunInterrupts, RunWitness, abort_run
+from mendwork.apps.cli.patch_output import source_notice
+from mendwork.apps.cli.patch_wiring import build_patcher, store_directory, workflow_store
+from mendwork.apps.cli.run_reports import write_report
+from mendwork.apps.cli.store_commands import StoreOption
 from mendwork.apps.cli.validate import format_problems, read_limited
 from mendwork.apps.cli.wiring import (
     USAGE_DIRECTORY,
@@ -56,11 +67,14 @@ from mendwork.engine.errors import (
     SecretUnavailable,
     WorkflowValidationError,
 )
+from mendwork.engine.patching.sources import resolve_source
 from mendwork.engine.ports.events import EventSink
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.settings import Settings
 
 __all__ = ["OutputMode", "run"]
+
+NOT_STARTED: Final = "interrupted before the run started; nothing was recorded"
 
 
 def run(
@@ -88,26 +102,36 @@ def run(
             help="Pause after every browser operation, so recordings show each action.",
         ),
     ] = None,
+    exact: Annotated[
+        bool,
+        typer.Option(
+            "--exact",
+            help="Run the file exactly as written: never a stored version, and no heal is saved.",
+        ),
+    ] = False,
     artifacts_dir: ArtifactsOption = None,
+    store_dir: StoreOption = None,
     output: OutputOption = OutputMode.HUMAN,
 ) -> None:
     """Replay a workflow, verifying every step; stop safely with evidence when unsure."""
     stdout, stderr = sys.stdout, sys.stderr
     settings = settings_or_exit(output, stdout, stderr)
-    version = _load(workflow, settings, output, stdout, stderr)
+    file = _load(workflow, settings, output, stdout, stderr)
     try:
         supplied = parse_input_arguments(inputs or [])
     except RunInputError as error:
         _invalid_inputs(error, str(workflow), output, stdout, stderr)
     code = asyncio.run(
         _replay(
-            version,
+            file,
             supplied,
             settings,
             headed=headed,
             slow_mo_ms=slow_mo,
             artifacts=LocalArtifactStore(artifacts_dir or settings.artifacts_dir),
             usage_directory=(artifacts_dir or settings.artifacts_dir) / USAGE_DIRECTORY,
+            store=store_directory(settings, store_dir),
+            exact=exact,
             output=output,
             source=str(workflow),
             stdout=stdout,
@@ -119,7 +143,7 @@ def run(
 
 
 async def _replay(
-    version: WorkflowVersion,
+    file: WorkflowVersion,
     supplied: dict[str, str],
     settings: Settings,
     *,
@@ -127,12 +151,18 @@ async def _replay(
     slow_mo_ms: int | None,
     artifacts: LocalArtifactStore,
     usage_directory: Path,
+    store: Path,
+    exact: bool,
     output: OutputMode,
     source: str,
     stdout: TextIO,
     stderr: TextIO,
     scrubber: SecretScrubber,
 ) -> int:
+    decision = await resolve_source(workflow_store(settings, store), file, source, exact=exact)
+    notice = source_notice(decision, store)
+    if notice is not None:
+        (stderr if output is OutputMode.JSON else stdout).write(notice + "\n")
     runs_directory = artifacts.runs_root
     sink: EventSink = (
         JsonLinesEventSink(stdout)
@@ -169,15 +199,21 @@ async def _replay(
                 resolver=resolver,
                 scrubber=scrubber,
                 model=model,
+                patcher=build_patcher(settings, store),
             )
-            task = asyncio.ensure_future(replayer.run(version, supplied))
+            task = asyncio.ensure_future(
+                replayer.run(decision.version, supplied, source=decision.source)
+            )
             interrupts.watch(task.cancel)
             try:
                 finished = await task
             except asyncio.CancelledError:
                 if not interrupts.interrupted:
                     raise
-                return report_interrupted(artifacts, witness.run_id, output, stdout, stderr)
+                recorded = read_record(artifacts, witness.run_id)
+                if recorded is None:
+                    return report_nothing_recorded(NOT_STARTED, output, stdout, stderr)
+                finished = recorded
     except RunInputError as error:
         report_inputs(error, source, output, stdout, stderr)
         return ExitCode.INVALID
@@ -191,7 +227,10 @@ async def _replay(
         report_error(error, ExitCode.INFRASTRUCTURE, output, stdout, stderr)
         return ExitCode.INFRASTRUCTURE
     code = exit_code_for(finished)
-    report_run(finished, code, runs_directory, output, stdout)
+    report = await write_report(
+        artifacts, finished, decision.version, settings=settings, scrubber=scrubber, stderr=stderr
+    )
+    report_run(finished, code, runs_directory, output, stdout, report=report)
     return code
 
 

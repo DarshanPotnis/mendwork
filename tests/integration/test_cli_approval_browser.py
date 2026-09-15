@@ -1,11 +1,13 @@
 """``mendwork run``, ``show``, ``approve``, and ``reject`` end to end, each with its own Chromium.
 
 On the chaos portal, a renamed download button is healed at an irreversible step, so the run stops
-for approval. Approving resumes it in a new browser and downloads the report; rejecting ends it
-failed. On the JS-free fixture site, the same flow proves that no secret reaches anything it leaves
-behind: command output and logs, run records, saved workflows, the audit log, or a trace.
+for approval. Approving resumes it in a new browser and downloads the report, and the approved heal
+becomes a version carrying its approval (ADR 0013); rejecting ends it failed. On the JS-free fixture
+site, the same flow proves that no secret reaches anything it leaves behind: command output and
+logs, run records, saved workflows, run reports, the workflow store, the audit log, or a trace.
 """
 
+import asyncio
 import json
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
@@ -15,11 +17,15 @@ import pytest
 from typer.testing import CliRunner, Result
 
 from benchmarks.chaos.local_egress import local_policy
+from mendwork.adapters.storage_fs.workflow_store import FileWorkflowStore
 from mendwork.adapters.workflow_yaml.codec import WorkflowYamlCodec
 from mendwork.apps.cli.main import app
 from mendwork.apps.portal.server import PortalServer
+from mendwork.engine.domain.changes import HealChange
 from mendwork.engine.domain.documents import parse_workflow_document
+from mendwork.engine.domain.patches import PatchResult
 from mendwork.engine.domain.runs import Run, RunStatus
+from mendwork.engine.patching.sources import stored_history
 from tests.integration.portal import DEMO_EMAIL, DEMO_PASSWORD
 from tests.secret_search import every_file, leaks
 from tests.workflows import REPO_ROOT, Document
@@ -27,6 +33,7 @@ from tests.workflows import REPO_ROOT, Document
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
 Mendwork = Callable[[list[str], dict[str, str], Sequence[str]], Result]
+CODEC: Final = WorkflowYamlCodec(max_bytes=1 << 20)
 APPROVAL_WORKFLOW: Final = (
     REPO_ROOT / "tests" / "fixtures" / "workflows" / "download_report_approval.yaml"
 )
@@ -39,13 +46,18 @@ EXPORT_PROPOSAL: Final = "export-1"
 
 
 @pytest.fixture
-def mendwork() -> Mendwork:
-    """Run a ``mendwork`` command in-process; the local servers named are all it may reach."""
+def mendwork(tmp_path: Path) -> Mendwork:
+    """Run a ``mendwork`` command in-process; the local servers named are all it may reach.
+
+    ``run`` and ``approve`` share the test's own workflow store, ``tmp_path / "workflow-store"``.
+    """
 
     def invoke(arguments: list[str], env: dict[str, str], servers: Sequence[str]) -> Result:
         origins = [exception.origin for exception in local_policy(servers).loopback_exceptions]
         egress = {"MENDWORK_EGRESS_LOOPBACK_EXCEPTIONS": json.dumps(origins)}
-        return CliRunner().invoke(app, arguments, env={**egress, **env})
+        store = ["--store-dir", str(tmp_path / "workflow-store")]
+        stored = store if arguments[0] in {"run", "approve"} else []
+        return CliRunner().invoke(app, [*arguments, *stored], env={**egress, **env})
 
     return invoke
 
@@ -124,6 +136,52 @@ def test_an_approved_download_resumes_in_a_new_browser_and_downloads_the_report(
     steps = artifacts / "runs" / run_id / "steps"
     assert (steps / "009_download_csv.png").is_file()
     assert (steps / "009_download_csv.segment2.png").is_file()
+
+
+def test_an_approved_irreversible_heal_becomes_a_version_that_names_its_approval(
+    mendwork: Mendwork, portal_url: str, tmp_path: Path, plain_stdout: Callable[[Result], str]
+) -> None:
+    artifacts = tmp_path / "artifacts"
+    workflow = CODEC.decode(APPROVAL_WORKFLOW.read_bytes(), source=str(APPROVAL_WORKFLOW))
+    store = FileWorkflowStore(tmp_path / "workflow-store", CODEC)
+    paused, run_id = pause_download(mendwork, portal_url, artifacts)
+    while_paused = asyncio.run(stored_history(store, workflow.workflow_id))
+
+    approved = mendwork(
+        ["approve", run_id, DOWNLOAD_PROPOSAL, "--artifacts-dir", str(artifacts)],
+        {"MENDWORK_SECRET_PORTAL_PASSWORD": DEMO_PASSWORD},
+        [portal_url],
+    )
+
+    assert approved.exit_code == 0, approved.stdout + approved.stderr
+    assert (
+        "  Step 4 sign_in: not saved: the run ended awaiting_approval, so none of its heals is "
+        "saved" in plain_stdout(paused)
+    )
+    assert [version.version for version in while_paused] == [1]
+    finished = record(artifacts, run_id)
+    assert [(item.step_id, item.result, item.version) for item in finished.patches] == [
+        ("sign_in", PatchResult.PUBLISHED, 2),
+        ("download_csv", PatchResult.PUBLISHED, 3),
+    ], finished.patches
+    output = plain_stdout(approved)
+    assert f"  Step 9 download_csv: saved as {workflow.workflow_id} v3 (rung " in output
+    versions = asyncio.run(stored_history(store, workflow.workflow_id))
+    assert [version.version for version in versions] == [1, 2, 3]
+    signed_in = versions[1].change
+    assert isinstance(signed_in, HealChange)
+    assert (signed_in.step_id, signed_in.approval) == ("sign_in", None)
+    change = versions[2].change
+    assert isinstance(change, HealChange)
+    assert change.approval is not None
+    decision = record(artifacts, run_id).proposals[0].decision
+    assert decision is not None
+    assert (change.step_id, change.evidence.run_id) == ("download_csv", run_id)
+    assert (change.approval.proposal_id, change.approval.audit_sequence) == (DOWNLOAD_PROPOSAL, 1)
+    assert change.approval.decided_at == decision.at
+    report = artifacts / "runs" / run_id / "report.html"
+    assert f"Report: {report.resolve().as_uri()}" in output
+    assert "approved at " in report.read_text(encoding="utf-8")
 
 
 def test_a_rejected_download_ends_the_run_failed_and_downloads_nothing(
@@ -243,11 +301,7 @@ def test_no_secret_reaches_anything_an_approval_or_a_rejection_leaves_behind(
     mendwork: Mendwork, fixture_site: str, tmp_path: Path
 ) -> None:
     workflow = tmp_path / "approval_leak_probe.yaml"
-    workflow.write_bytes(
-        WorkflowYamlCodec(max_bytes=1 << 20).encode(
-            parse_workflow_document(approval_leak_workflow())
-        )
-    )
+    workflow.write_bytes(CODEC.encode(parse_workflow_document(approval_leak_workflow())))
     env = {"MENDWORK_SECRET_SITE_PASSWORD": LEAK_SECRET, "MENDWORK_LOG_LEVEL": "DEBUG"}
     servers = [fixture_site]
 
@@ -315,10 +369,13 @@ def test_no_secret_reaches_anything_an_approval_or_a_rejection_leaves_behind(
     ]
     searched.extend(every_file(approved_artifacts))
     searched.extend(every_file(rejected_artifacts))
+    searched.extend(every_file(tmp_path / "workflow-store"))
     names = [name for name, _ in searched]
     assert any(name.endswith("audit.jsonl") for name in names)
     assert any(name.endswith("workflow.json") for name in names)
     assert any("trace.segment2.zip!" in name for name in names)
+    assert sum(1 for name in names if name.endswith("report.html")) == 2
+    assert any(name.endswith("v0001.yaml") for name in names)
     assert [
         (name, leaks(data, LEAK_SECRET)) for name, data in searched if leaks(data, LEAK_SECRET)
     ] == []

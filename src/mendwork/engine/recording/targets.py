@@ -6,6 +6,9 @@ element. One that matches several elements is tried inside the target's ancestor
 two levels deep, before it is dropped. The fingerprint built from the survivors must then
 resolve through Phase 3's own Rung 0 to the same element with a confirmed identity, so a
 recorded step is known to replay at the moment it is recorded.
+
+The same derivation fingerprints a verified heal's element, so the version a heal creates carries
+selectors made exactly as a recording's are (ADR 0013).
 """
 
 from collections.abc import Sequence
@@ -24,7 +27,6 @@ from mendwork.engine.errors import (
 )
 from mendwork.engine.ports.browser_types import ElementIdentity, ElementRef
 from mendwork.engine.ports.element_types import ElementFacts
-from mendwork.engine.recording.context import CaptureContext
 from mendwork.engine.recording.failures import UnusableReason, unusable
 from mendwork.engine.recording.fingerprints import build_fingerprint
 from mendwork.engine.recording.selectors import (
@@ -34,6 +36,7 @@ from mendwork.engine.recording.selectors import (
     summarize,
     with_scope,
 )
+from mendwork.engine.recording.target_context import TargetCaptureContext
 from mendwork.engine.replay.deadlines import Deadline
 from mendwork.engine.replay.rung0 import resolve_target
 
@@ -52,15 +55,21 @@ class RecordedTarget:
 class TargetRecorder:
     """Verifies and fingerprints one pinned element."""
 
-    def __init__(self, context: CaptureContext) -> None:
+    def __init__(self, context: TargetCaptureContext) -> None:
         self._context = context
         self._browser = context.browser
         self._scopes: tuple[Scope, ...] | None = None
 
-    async def record(self, element: ElementRef) -> RecordedTarget:
-        """The element's fingerprint. Raises RecordingUnusable when it cannot be recorded."""
-        config = self._context.config
-        deadline = Deadline.after(self._context.timer, config.step_timeout_ms)
+    async def record(
+        self, element: ElementRef, *, deadline: Deadline | None = None
+    ) -> RecordedTarget:
+        """The element's fingerprint. Raises RecordingUnusable when it cannot be recorded.
+
+        ``deadline`` caps the capture when the caller has less time than a step's timeout.
+        """
+        context = self._context
+        own = Deadline.after(context.timer, context.step_timeout_ms)
+        deadline = own if deadline is None else own.earliest(deadline)
         identity = await self._browser.identify(element, confirm=True)
         if identity.confirmed is False:
             raise unusable(
@@ -103,11 +112,11 @@ class TargetRecorder:
     async def _verify(
         self, element: ElementRef, candidates: Sequence[Selector], deadline: Deadline
     ) -> tuple[list[Selector], list[DroppedSelector]]:
-        config = self._context.config
+        context = self._context
         while True:
             settling = await self._browser.wait_until_settled(
-                quiet_frames=config.settle_quiet_frames,
-                timeout_ms=deadline.cap(config.settle_timeout_ms),
+                quiet_frames=context.settle_quiet_frames,
+                timeout_ms=deadline.cap(context.settle_timeout_ms),
             )
             kept, dropped = await self._evaluate(element, candidates)
             epoch = await self._browser.dom_epoch(timeout_ms=deadline.timeout_ms())
@@ -183,7 +192,7 @@ class TargetRecorder:
     async def _scope_list(self, element: ElementRef) -> tuple[Scope, ...]:
         if self._scopes is None:
             ancestors = await self._browser.scope_ancestors(
-                element, limit=self._context.config.scope_ancestors_max
+                element, limit=self._context.scope_ancestors_max
             )
             self._scopes = scope_selectors(ancestors)
         return self._scopes
@@ -198,15 +207,15 @@ class TargetRecorder:
     async def _prove(
         self, element: ElementRef, fingerprint: Fingerprint, deadline: Deadline
     ) -> SelectorChoice:
-        config = self._context.config
+        context = self._context
         try:
             resolved = await resolve_target(
                 self._browser,
                 fingerprint,
                 deadline=deadline,
-                settle_timeout_ms=config.settle_timeout_ms,
-                quiet_frames=config.settle_quiet_frames,
-                scrubber=self._context.scrubber,
+                settle_timeout_ms=context.settle_timeout_ms,
+                quiet_frames=context.settle_quiet_frames,
+                scrubber=context.scrubber,
             )
         except PageNeverStable as error:
             raise unusable(

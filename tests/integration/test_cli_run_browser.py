@@ -34,17 +34,21 @@ LEAK_SECRET: Final = "Zq7-leak/probe &4421 ü"
 
 
 @pytest.fixture
-def cli_browser() -> Invoke:
+def cli_browser(tmp_path: Path) -> Invoke:
     """Run ``mendwork run`` in-process; it launches its own Chromium each time.
 
-    The local servers the run's inputs name are the only loopback origins it may reach.
+    The local servers the run's inputs name are the only loopback origins it may reach, and the
+    test's own workflow store is the only one it uses unless the arguments name another.
     """
 
     def invoke(arguments: list[str], env: dict[str, str]) -> Result:
         values = [argument.split("=", 1)[1] for argument in arguments if "=" in argument]
         origins = [exception.origin for exception in local_policy(values).loopback_exceptions]
         egress = {"MENDWORK_EGRESS_LOOPBACK_EXCEPTIONS": json.dumps(origins)}
-        return CliRunner().invoke(app, ["run", *arguments], env={**egress, **env})
+        store = (
+            [] if "--store-dir" in arguments else ["--store-dir", str(tmp_path / "workflow-store")]
+        )
+        return CliRunner().invoke(app, ["run", *arguments, *store], env={**egress, **env})
 
     return invoke
 

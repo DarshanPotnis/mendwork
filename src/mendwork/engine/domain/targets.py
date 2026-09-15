@@ -61,3 +61,5 @@ class TargetEvidence(DomainModel):
     """How the found identity differs from the recorded one, for a drifted match."""
     healed_rung: int | None = Field(default=None, ge=1, le=3)
     """The rung that found the target, when the recorded selectors did not."""
+    pending_patch: str | None = None
+    """The pending patch whose target resolved at Rung 0 after the recorded one did not."""

@@ -120,13 +120,16 @@ def test_reject_records_the_decision_first_and_ends_the_run_failed(
     rejected = invoke(tmp_path, "reject", RUN_ID, "export-1", "--reason", "wrong button")
     again = invoke(tmp_path, "reject", RUN_ID, "export-1")
 
+    report = tmp_path / "runs" / RUN_ID / "report.html"
     assert rejected.exit_code == 0
     assert plain_stdout(rejected).splitlines() == [
         f"Rejected proposal export-1 of run {RUN_ID} (audit entry 1).",
         "Reason: wrong button",
         "The run is failed and nothing was acted on. Re-record the step, or fix the page it runs "
         "on, then run the workflow.",
+        f"Report: {report.resolve().as_uri()}",
     ]
+    assert report.read_text(encoding="utf-8").startswith("<!doctype html>")
     assert [(line["kind"], line["reason"]) for line in audit_lines(tmp_path)] == [
         ("proposal_rejected", "wrong button")
     ]

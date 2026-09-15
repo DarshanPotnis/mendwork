@@ -19,6 +19,7 @@ from mendwork.engine.ports.browser_types import (
     DownloadObservation,
     ElementIdentity,
     ElementRef,
+    ElementView,
     FieldExpectation,
     FieldValueCheck,
     FillText,
@@ -32,6 +33,7 @@ from mendwork.engine.ports.browser_types import (
 )
 from mendwork.engine.ports.candidate_types import CandidateQuery, CandidateScan
 from mendwork.engine.ports.element_types import ElementFacts
+from mendwork.engine.ports.recording_types import AncestorFacts
 from mendwork.engine.safety.egress import EgressPolicy
 from mendwork.engine.safety.egress_blocks import EgressBlock
 from mendwork.engine.safety.secret_scrub import SecretScrubber
@@ -190,6 +192,25 @@ class BrowserPort(Protocol):
 
     async def screenshot(self, *, mask: Sequence[Selector], timeout_ms: int) -> bytes:
         """A PNG of the viewport with password fields and ``mask`` selectors blacked out."""
+        ...
+
+    async def element_view(
+        self, element: ElementRef, *, mask: Sequence[Selector], timeout_ms: int
+    ) -> ElementView:
+        """A PNG of a viewport-sized part of the page around a pinned element, masked like
+        ``screenshot``, and where the element sits in it. The page is not scrolled.
+
+        Raises TargetNotFound if the element's document was replaced.
+        """
+        ...
+
+    async def scope_ancestors(
+        self, element: ElementRef, *, limit: int
+    ) -> tuple[AncestorFacts, ...]:
+        """Up to ``limit`` ancestors of a pinned element, nearest first, for selector scopes.
+
+        Raises TargetNotFound if the element's document was replaced.
+        """
         ...
 
     async def dom_snapshot(self) -> str:

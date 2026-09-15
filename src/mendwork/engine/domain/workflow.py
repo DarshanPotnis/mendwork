@@ -7,11 +7,11 @@ from pydantic import Field, ValidationInfo, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
 from mendwork.engine.domain.base import DomainModel
-from mendwork.engine.domain.changes import ChangeRecord, Rollback
+from mendwork.engine.domain.changes import ChangeRecord, HealChange, Rollback
 from mendwork.engine.domain.identifiers import SecretNameField, VersionNumber, WorkflowIdField
 from mendwork.engine.domain.limits import DECLARATIONS_MAX_ITEMS, STEPS_MAX_ITEMS
 from mendwork.engine.domain.references import find_reference_issues
-from mendwork.engine.domain.steps import Step
+from mendwork.engine.domain.steps import Step, step_target
 from mendwork.engine.domain.values import InputDeclaration
 from mendwork.engine.errors import ValidationIssue
 
@@ -106,6 +106,21 @@ class WorkflowVersion(DomainModel):
     @model_validator(mode="after")
     def _check_references(self) -> Self:
         _raise_reference_issues(find_reference_issues(self.inputs, self.secrets, self.steps))
+        return self
+
+    @model_validator(mode="after")
+    def _heal_matches_its_step(self) -> Self:
+        change = self.change
+        if isinstance(change, HealChange):
+            step = next((item for item in self.steps if item.id == change.step_id), None)
+            if step is None:
+                raise ValueError(
+                    f"change names step {change.step_id}, which this version does not have"
+                )
+            if step_target(step) != change.new_target:
+                raise ValueError(
+                    f"change.new_target is not the target step {change.step_id} has in this version"
+                )
         return self
 
     @property

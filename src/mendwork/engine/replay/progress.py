@@ -11,6 +11,7 @@ from mendwork.engine.domain.heals import (
     HealReport,
     RecoveryReport,
 )
+from mendwork.engine.domain.patches import FoundTarget
 from mendwork.engine.domain.runs import ArtifactName, CheckpointResult, NavigationReport
 from mendwork.engine.domain.steps import Step
 from mendwork.engine.domain.targets import TargetEvidence
@@ -43,6 +44,8 @@ class StepProgress:
     proposal: HealProposal | None = None
     approval: HealProposal | None = None
     """For an approved step as its run resumes: a heal may act only on this proposal's element."""
+    found: FoundTarget | None = None
+    """The healed element about to be acted on, fingerprinted as the recorder would (ADR 0013)."""
 
     def heal_report(self) -> HealReport | None:
         """What the heal ladder did for this step, if it ran."""
@@ -56,9 +59,14 @@ class StepProgress:
             proposal=self.proposal,
         )
 
+    def verified_found(self) -> FoundTarget | None:
+        """The captured element, only once its heal was verified."""
+        return self.found if self.healed_rung is not None else None
+
     def forget_action(self) -> None:
         """Clear what a failed attempt did, once the page it did it on has been restored."""
         self.target = None
         self.action_performed = False
         self.checkpoints.clear()
         self.download = None
+        self.found = None

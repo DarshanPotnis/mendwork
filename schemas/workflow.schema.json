@@ -1,6 +1,35 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
+    "ApprovalReference": {
+      "additionalProperties": false,
+      "description": "The approval that let an irreversible step act on its heal.",
+      "properties": {
+        "proposal_id": {
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*-[1-9][0-9]*$",
+          "title": "Proposal Id",
+          "type": "string"
+        },
+        "audit_sequence": {
+          "description": "The audit log entry that records the approval.",
+          "minimum": 1,
+          "title": "Audit Sequence",
+          "type": "integer"
+        },
+        "decided_at": {
+          "format": "date-time",
+          "title": "Decided At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "proposal_id",
+        "audit_sequence",
+        "decided_at"
+      ],
+      "title": "ApprovalReference",
+      "type": "object"
+    },
     "AriaRole": {
       "description": "WAI-ARIA roles, exactly the set Playwright's role locator accepts.\n\nA test compares this list with Playwright's own type, so the two cannot drift apart.",
       "enum": [
@@ -513,6 +542,20 @@
       ],
       "title": "ByText",
       "type": "object"
+    },
+    "CheckpointKind": {
+      "description": "What a checkpoint observes after a step's action.",
+      "enum": [
+        "url_matches",
+        "element_visible",
+        "text_present",
+        "download_completed",
+        "response_received",
+        "no_error_banner",
+        "field_has_value"
+      ],
+      "title": "CheckpointKind",
+      "type": "string"
     },
     "ClickStep": {
       "additionalProperties": false,
@@ -1174,6 +1217,208 @@
       "title": "FingerprintAttributes",
       "type": "object"
     },
+    "HealChange": {
+      "additionalProperties": false,
+      "description": "A verified heal: one step now targets the element the heal found and verified.",
+      "properties": {
+        "kind": {
+          "const": "heal",
+          "title": "Kind",
+          "type": "string"
+        },
+        "step_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Step Id",
+          "type": "string"
+        },
+        "rung": {
+          "enum": [
+            1,
+            2,
+            3
+          ],
+          "title": "Rung",
+          "type": "integer"
+        },
+        "old_target": {
+          "$ref": "#/$defs/Fingerprint",
+          "description": "The step's target in the version the heal was verified against."
+        },
+        "new_target": {
+          "$ref": "#/$defs/Fingerprint",
+          "description": "The healed element, fingerprinted by the recorder's own derivation."
+        },
+        "checkpoints": {
+          "description": "The checkpoints that passed on the healed element, in the step's order.",
+          "items": {
+            "$ref": "#/$defs/CheckpointKind"
+          },
+          "maxItems": 10,
+          "minItems": 1,
+          "title": "Checkpoints",
+          "type": "array"
+        },
+        "strength": {
+          "$ref": "#/$defs/VerificationStrength",
+          "description": "Strong when a checkpoint observed something only the right action produces; weak when only\n``url_matches`` or ``field_has_value`` did, which another element could pass too."
+        },
+        "score": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "margin": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Margin"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold"
+        },
+        "required_margin": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required Margin"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelHealUsage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "approval": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApprovalReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "evidence": {
+          "$ref": "#/$defs/HealEvidence"
+        },
+        "promotion": {
+          "$ref": "#/$defs/Promotion"
+        }
+      },
+      "required": [
+        "kind",
+        "step_id",
+        "rung",
+        "old_target",
+        "new_target",
+        "checkpoints",
+        "strength",
+        "evidence",
+        "promotion"
+      ],
+      "title": "HealChange",
+      "type": "object"
+    },
+    "HealEvidence": {
+      "additionalProperties": false,
+      "description": "Where the run that verified the heal keeps its evidence, relative to its artifacts.",
+      "properties": {
+        "run_id": {
+          "pattern": "^\\d{8}T\\d{6}Z-[0-9a-f]{8}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "report": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,127}){0,3}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Report"
+        },
+        "step_screenshot": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,127}){0,3}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Step Screenshot"
+        },
+        "found_screenshot": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}(?:/[A-Za-z0-9][A-Za-z0-9._-]{0,127}){0,3}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The element, outlined in the run's report, just before the action.",
+          "title": "Found Screenshot"
+        }
+      },
+      "required": [
+        "run_id"
+      ],
+      "title": "HealEvidence",
+      "type": "object"
+    },
     "InputValue": {
       "additionalProperties": false,
       "description": "A value supplied when a run starts; it is recorded in run history.",
@@ -1242,6 +1487,98 @@
         "summary"
       ],
       "title": "ManualEdit",
+      "type": "object"
+    },
+    "ModelHealUsage": {
+      "additionalProperties": false,
+      "description": "What asking a model for a heal cost, and how sure it said it was.",
+      "properties": {
+        "provider": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "prompt_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "calls": {
+          "default": 0,
+          "description": "Calls made for the step's heal, repairs included; 0 when an approved pick was found again.",
+          "minimum": 0,
+          "title": "Calls",
+          "type": "integer"
+        },
+        "input_tokens": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "estimated_cost_usd": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "default": "0",
+          "title": "Estimated Cost Usd"
+        },
+        "unpriced_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Unpriced Calls",
+          "type": "integer"
+        },
+        "unreported_token_calls": {
+          "default": 0,
+          "description": "Calls whose provider reported no token counts, which the token counts above leave out.",
+          "minimum": 0,
+          "title": "Unreported Token Calls",
+          "type": "integer"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The model's own confidence: evidence only, no decision reads it.",
+          "title": "Confidence"
+        }
+      },
+      "required": [
+        "provider",
+        "model",
+        "prompt_version"
+      ],
+      "title": "ModelHealUsage",
       "type": "object"
     },
     "NavigateStep": {
@@ -1540,6 +1877,40 @@
       ],
       "title": "PressStep",
       "type": "object"
+    },
+    "Promotion": {
+      "additionalProperties": false,
+      "description": "How the heal became a version.",
+      "properties": {
+        "policy": {
+          "$ref": "#/$defs/PromotionPolicy"
+        },
+        "runs": {
+          "description": "Every succeeded run that verified it, the healing run first.",
+          "items": {
+            "pattern": "^\\d{8}T\\d{6}Z-[0-9a-f]{8}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Runs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "policy",
+        "runs"
+      ],
+      "title": "Promotion",
+      "type": "object"
+    },
+    "PromotionPolicy": {
+      "description": "When a verified heal becomes a new workflow version (ADR 0013).",
+      "enum": [
+        "immediate",
+        "after_n_successes"
+      ],
+      "title": "PromotionPolicy",
+      "type": "string"
     },
     "ResponseReceived": {
       "additionalProperties": false,
@@ -1969,6 +2340,16 @@
       ],
       "title": "UrlMatches",
       "type": "object"
+    },
+    "VerificationStrength": {
+      "description": "How much a step's checkpoints prove about which element was acted on (ADR 0010).",
+      "enum": [
+        "strong",
+        "weak",
+        "none"
+      ],
+      "title": "VerificationStrength",
+      "type": "string"
     }
   },
   "additionalProperties": false,
@@ -2017,6 +2398,7 @@
         {
           "discriminator": {
             "mapping": {
+              "heal": "#/$defs/HealChange",
               "manual_edit": "#/$defs/ManualEdit",
               "rollback": "#/$defs/Rollback"
             },
@@ -2028,6 +2410,9 @@
             },
             {
               "$ref": "#/$defs/Rollback"
+            },
+            {
+              "$ref": "#/$defs/HealChange"
             }
           ]
         },

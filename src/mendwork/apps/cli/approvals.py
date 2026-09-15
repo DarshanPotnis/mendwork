@@ -2,7 +2,9 @@
 
 ``approve`` records the approval in the audit log and the run's record, then resumes the run in a
 new browser straight away. It reports as ``mendwork run`` does and exits with the resumed run's
-code. ``reject`` records the rejection, which ends the run failed, and exits 0.
+code; when the resumed run succeeds, the heals it verified, the approved one included, are saved as
+versions with the approval they rest on (ADR 0013). ``reject`` records the rejection, which ends the
+run failed, and exits 0. Both write the run's HTML report again.
 
 Both exit 2 when nothing could be recorded: an unknown run or proposal, a proposal already decided,
 a run another process holds, or, for an approval, a run that cannot resume, a missing secret, or a
@@ -38,6 +40,7 @@ from mendwork.apps.cli.commands import (
     report_egress,
     report_error,
     report_inputs,
+    report_line,
     report_nothing_recorded,
     report_run,
     report_secrets,
@@ -48,6 +51,9 @@ from mendwork.apps.cli.commands import (
 from mendwork.apps.cli.exit_codes import ExitCode, exit_code_for
 from mendwork.apps.cli.human_output import HumanProgress
 from mendwork.apps.cli.interrupts import RunInterrupts, abort_run
+from mendwork.apps.cli.patch_wiring import build_patcher, store_directory
+from mendwork.apps.cli.run_reports import saved_workflow, write_report
+from mendwork.apps.cli.store_commands import StoreOption
 from mendwork.apps.cli.wiring import (
     USAGE_DIRECTORY,
     egress_enforcement,
@@ -89,6 +95,7 @@ def approve(
         bool, typer.Option("--headed", help="Show the browser window while the run resumes.")
     ] = False,
     artifacts_dir: ArtifactsOption = None,
+    store_dir: StoreOption = None,
     output: OutputOption = OutputMode.HUMAN,
 ) -> None:
     """Approve a proposal and resume its run, acting only on the approved element."""
@@ -104,6 +111,7 @@ def approve(
             headed=headed,
             artifacts=LocalArtifactStore(root),
             usage_directory=root / USAGE_DIRECTORY,
+            store=store_directory(settings, store_dir),
             output=output,
             stdout=stdout,
             stderr=stderr,
@@ -142,6 +150,7 @@ def reject(
             run,
             proposal_id,
             reason,
+            settings,
             artifacts=artifacts,
             output=output,
             stdout=stdout,
@@ -173,6 +182,7 @@ async def _approve(
     headed: bool,
     artifacts: LocalArtifactStore,
     usage_directory: Path,
+    store: Path,
     output: OutputMode,
     stdout: TextIO,
     stderr: TextIO,
@@ -213,6 +223,7 @@ async def _approve(
                 resolver=resolver,
                 scrubber=scrubber,
                 model=model,
+                patcher=build_patcher(settings, store),
             )
             task = asyncio.ensure_future(desk.approve(run_id, proposal_id, resumer))
             interrupts.watch(task.cancel)
@@ -221,7 +232,10 @@ async def _approve(
             except asyncio.CancelledError:
                 if not interrupts.interrupted:
                     raise
-                return _interrupted(artifacts, run_id, proposal_id, output, stdout, stderr)
+                decided = _decided(read_record(artifacts, run_id), proposal_id)
+                if decided is None:
+                    return report_nothing_recorded(NOTHING_RECORDED, output, stdout, stderr)
+                finished = decided
     except (RunBusy, UnknownRun, ProposalNotPending, RunNotResumable) as error:
         report_error(error, ExitCode.INVALID, output, stdout, stderr)
         return ExitCode.INVALID
@@ -238,7 +252,15 @@ async def _approve(
         report_error(error, ExitCode.INFRASTRUCTURE, output, stdout, stderr)
         return ExitCode.INFRASTRUCTURE
     code = exit_code_for(finished)
-    report_run(finished, code, artifacts.runs_root, output, stdout)
+    report = await write_report(
+        artifacts,
+        finished,
+        saved_workflow(artifacts, run_id),
+        settings=settings,
+        scrubber=scrubber,
+        stderr=stderr,
+    )
+    report_run(finished, code, artifacts.runs_root, output, stdout, report=report)
     line = outcome_line(finished, proposal_id)
     if output is OutputMode.HUMAN and line is not None:
         stdout.write(line + "\n")
@@ -249,6 +271,7 @@ async def _reject(
     run_id: RunId,
     proposal_id: str,
     reason: str | None,
+    settings: Settings,
     *,
     artifacts: LocalArtifactStore,
     output: OutputMode,
@@ -281,10 +304,24 @@ async def _reject(
         return ExitCode.INFRASTRUCTURE
     if finished is None:
         return report_nothing_recorded(NOTHING_RECORDED, output, stdout, stderr)
+    report = await write_report(
+        artifacts,
+        finished,
+        saved_workflow(artifacts, run_id),
+        settings=settings,
+        scrubber=scrubber,
+        stderr=stderr,
+    )
     if output is OutputMode.JSON:
-        result_line(stdout, ExitCode.SUCCEEDED, run=json.loads(finished.model_dump_json()))
+        fields: dict[str, object] = {"run": json.loads(finished.model_dump_json())}
+        if report is not None:
+            fields["report"] = str(report)
+        result_line(stdout, ExitCode.SUCCEEDED, **fields)
     else:
-        stdout.write("\n".join(rejected_lines(finished, proposal_id)) + "\n")
+        lines = rejected_lines(finished, proposal_id)
+        if report is not None:
+            lines.append(report_line(report))
+        stdout.write("\n".join(lines) + "\n")
     return ExitCode.SUCCEEDED
 
 
@@ -292,19 +329,3 @@ def _decided(record: Run | None, proposal_id: str) -> Run | None:
     """The record, if the decision on the proposal reached it."""
     item = find_proposal(record, proposal_id) if record is not None else None
     return record if item is not None and not item.pending else None
-
-
-def _interrupted(
-    artifacts: LocalArtifactStore,
-    run_id: RunId,
-    proposal_id: str,
-    output: OutputMode,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int:
-    record = _decided(read_record(artifacts, run_id), proposal_id)
-    if record is None:
-        return report_nothing_recorded(NOTHING_RECORDED, output, stdout, stderr)
-    code = exit_code_for(record)
-    report_run(record, code, artifacts.runs_root, output, stdout)
-    return code

@@ -27,6 +27,7 @@ from mendwork.engine.ports.browser_types import (
     DownloadObservation,
     ElementIdentity,
     ElementRef,
+    ElementView,
     FieldExpectation,
     FieldValueCheck,
     FillText,
@@ -40,6 +41,7 @@ from mendwork.engine.ports.browser_types import (
 )
 from mendwork.engine.ports.candidate_types import CandidateQuery, CandidateScan, LiveCandidate
 from mendwork.engine.ports.element_types import ElementFacts
+from mendwork.engine.ports.recording_types import AncestorFacts
 from mendwork.engine.safety.egress import EgressPolicy
 from mendwork.engine.safety.egress_blocks import EgressBlock
 from mendwork.engine.safety.secret_scrub import SecretScrubber
@@ -231,6 +233,16 @@ class GroundTruthSession:
 
     async def screenshot(self, *, mask: Sequence[Selector], timeout_ms: int) -> bytes:
         return await self._inner.screenshot(mask=mask, timeout_ms=timeout_ms)
+
+    async def element_view(
+        self, element: ElementRef, *, mask: Sequence[Selector], timeout_ms: int
+    ) -> ElementView:
+        return await self._inner.element_view(element, mask=mask, timeout_ms=timeout_ms)
+
+    async def scope_ancestors(
+        self, element: ElementRef, *, limit: int
+    ) -> tuple[AncestorFacts, ...]:
+        return await self._inner.scope_ancestors(element, limit=limit)
 
     async def dom_snapshot(self) -> str:
         return await self._inner.dom_snapshot()

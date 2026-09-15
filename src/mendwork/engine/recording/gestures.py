@@ -63,7 +63,7 @@ async def capture_gesture(
             state = await browser.actionability(element)
             if not (state.attached and state.visible and state.enabled):
                 return IgnoredReason.NOT_ACTIONABLE
-            target = await TargetRecorder(context).record(element)
+            target = await TargetRecorder(context.targets()).record(element)
         return await _perform(context, capture, element, target, index=index, taken=taken)
     finally:
         if element is not None:

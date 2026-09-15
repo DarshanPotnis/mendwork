@@ -12,7 +12,12 @@ import pytest
 from mendwork.adapters.storage_fs.file_ops import OsFileOps
 from mendwork.adapters.storage_fs.workflow_store import FileWorkflowStore, version_file_name
 from mendwork.engine.domain.identifiers import WorkflowId
-from mendwork.engine.errors import PolicyViolation, VersionConflict, WorkflowValidationError
+from mendwork.engine.errors import (
+    PolicyViolation,
+    VersionConflict,
+    WorkflowStoreUnavailable,
+    WorkflowValidationError,
+)
 from tests.unit.storage_fs.conftest import CODEC
 from tests.unit.storage_fs.versions import child_of, lineage
 
@@ -85,9 +90,12 @@ async def test_a_failure_mid_publish_leaves_no_partial_or_temporary_file(
     await FileWorkflowStore(tmp_path, CODEC).publish(first)
     store = FileWorkflowStore(tmp_path, CODEC, file_ops=FailingFileOps(failing))
 
-    with pytest.raises(OSError, match=r"No space left|Input/output|not permitted"):
+    with pytest.raises(
+        WorkflowStoreUnavailable, match=r"No space left|Input/output|not permitted"
+    ) as caught:
         await store.publish(second)
 
+    assert isinstance(caught.value.__cause__, OSError)
     assert entries(tmp_path / "demo") == ["v0001.yaml"]
     assert await store.versions(DEMO) == (1,)
 
@@ -96,7 +104,7 @@ async def test_a_directory_sync_failure_is_reported_and_a_retry_is_safe(tmp_path
     first, second = lineage(2)
     await FileWorkflowStore(tmp_path, CODEC).publish(first)
 
-    with pytest.raises(OSError, match="Input/output"):
+    with pytest.raises(WorkflowStoreUnavailable, match="Input/output"):
         await FileWorkflowStore(tmp_path, CODEC, file_ops=FailingFileOps("sync_directory")).publish(
             second
         )

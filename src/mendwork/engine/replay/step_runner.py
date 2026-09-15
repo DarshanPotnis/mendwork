@@ -3,17 +3,19 @@
 The order is the safety argument. The target is verified before anything touches the page;
 events the action causes are watched for before the action; a new tab or window, or anything the
 egress policy refused, fails the step; and every failure is recorded with the evidence that
-explains it. When the recorded selectors cannot safely proceed, the heal ladder takes over
-(``step_healing``), and a healed target passes exactly the same checks and checkpoints before the
-step counts as done.
+explains it. When the recorded selectors cannot safely proceed, a pending patch's target is tried
+once (``pending_first_try``), and then the heal ladder takes over (``step_healing``). A target found
+either way passes exactly the same checks and checkpoints before the step counts as done.
 """
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 
 import structlog
 
 from mendwork.engine.domain.approvals import VerifiedHealRecord
+from mendwork.engine.domain.enums import RiskLevel
 from mendwork.engine.domain.heals import HealProposal
+from mendwork.engine.domain.identifiers import StepId
 from mendwork.engine.domain.runs import (
     ErrorReport,
     RunId,
@@ -26,10 +28,14 @@ from mendwork.engine.domain.targets import TargetEvidence
 from mendwork.engine.errors import (
     ApprovalRequired,
     ApprovalStale,
+    CheckpointFailed,
     InfrastructureError,
     MendworkError,
     NeedsReview,
     RunTimedOut,
+    TargetDrifted,
+    TargetNotActionable,
+    TargetNotFound,
 )
 from mendwork.engine.healing.candidates import approved_identity
 from mendwork.engine.healing.context import LadderContext
@@ -37,17 +43,20 @@ from mendwork.engine.healing.ladder import is_healable
 from mendwork.engine.healing.model_rung import ModelChooser
 from mendwork.engine.healing.recovery import StateRestorer
 from mendwork.engine.healing.run_state import RunHealState, StepStart, VerifiedHeal
+from mendwork.engine.patching.capture import HealCapture
 from mendwork.engine.ports.artifacts import ArtifactStore
 from mendwork.engine.ports.browser import BrowserPort
 from mendwork.engine.ports.clock import Clock
 from mendwork.engine.ports.randomness import RandomSource
 from mendwork.engine.ports.timer import Timer
+from mendwork.engine.recording.target_context import TargetCaptureContext
 from mendwork.engine.replay.artifact_names import FIRST_SEGMENT
 from mendwork.engine.replay.config import ReplayConfig
 from mendwork.engine.replay.deadlines import Deadline
 from mendwork.engine.replay.emitter import RunEmitter
 from mendwork.engine.replay.evidence import EvidenceRecorder
 from mendwork.engine.replay.navigation_guard import NavigationGuard
+from mendwork.engine.replay.pending_first_try import FirstTries, FirstTry
 from mendwork.engine.replay.progress import StepProgress
 from mendwork.engine.replay.reports import error_report, target_evidence
 from mendwork.engine.replay.rung0 import resolve_target
@@ -55,6 +64,8 @@ from mendwork.engine.replay.step_actions import ActionTarget, IrreversibleDispat
 from mendwork.engine.replay.step_healing import StepHealer
 from mendwork.engine.replay.values import ValueResolver
 from mendwork.engine.safety.secret_scrub import SecretScrubber
+
+_BEFORE_ACTION_ERRORS = (TargetNotActionable, TargetDrifted, TargetNotFound)
 
 
 class StepRunner:
@@ -80,6 +91,7 @@ class StepRunner:
         chooser: ModelChooser | None = None,
         segment: int = FIRST_SEGMENT,
         downloads: Collection[str] = (),
+        first_tries: Mapping[StepId, tuple[FirstTry, ...]] | None = None,
     ) -> None:
         self._browser = browser
         self._emitter = emitter
@@ -114,6 +126,19 @@ class StepRunner:
             run_deadline=run_deadline,
             log=log,
         )
+        capture = HealCapture(
+            targets=TargetCaptureContext(
+                browser=browser,
+                timer=timer,
+                scrubber=scrubber,
+                step_timeout_ms=config.step_timeout_ms,
+                settle_timeout_ms=config.settle_timeout_ms,
+                settle_quiet_frames=config.settle_quiet_frames,
+                scope_ancestors_max=config.scope_ancestors_max,
+            ),
+            evidence=self._evidence,
+            log=log,
+        )
         self._healer = StepHealer(
             browser=browser,
             actions=self._actions,
@@ -143,6 +168,16 @@ class StepRunner:
             run_deadline=run_deadline,
             scrubber=scrubber,
             log=log,
+            capture=capture,
+        )
+        self._first_tries = FirstTries(
+            browser=browser,
+            tries=first_tries or {},
+            emitter=emitter,
+            config=config,
+            timer=timer,
+            run_deadline=run_deadline,
+            scrubber=scrubber,
         )
         self._progress: StepProgress | None = None
 
@@ -258,9 +293,40 @@ class StepRunner:
         except MendworkError as failure:
             if self._run_deadline.expired or not is_healable(failure):
                 raise
-            await self._healer.heal(progress, failure)
+            tried = await self._first_tries.resolve(progress, failure)
+            if tried is None or not await self._act_on_first_try(progress, tried):
+                await self._healer.heal(progress, failure)
             return
         await self._actions.perform(progress, target, deadline)
+
+    async def _act_on_first_try(self, progress: StepProgress, target: ActionTarget) -> bool:
+        """Act on a pending patch's target; False when it could not take the action at all.
+
+        A target that fails its pre-action checks was never acted on, so the step heals as usual. An
+        irreversible action whose checkpoints fail on it needs review and is never retried.
+        """
+        deadline = Deadline.after(self._timer, self._config.step_timeout_ms).earliest(
+            self._run_deadline
+        )
+        try:
+            await self._actions.perform(progress, target, deadline)
+        except _BEFORE_ACTION_ERRORS:
+            if progress.action_performed:
+                raise
+            if target.element in progress.pinned:
+                progress.pinned.remove(target.element)
+            await self._browser.release([target.element])
+            progress.target = None
+            return False
+        except CheckpointFailed as failed:
+            if progress.step.risk is RiskLevel.IRREVERSIBLE:
+                raise NeedsReview(
+                    "an irreversible action ran on a pending patch's target and its checkpoints "
+                    "did not pass; it is never retried",
+                    reason="pending_patch_unverified",
+                ) from failed
+            raise
+        return True
 
     async def _resolve(self, progress: StepProgress, deadline: Deadline) -> ActionTarget:
         step = progress.step
@@ -302,7 +368,9 @@ class StepRunner:
                 except MendworkError as failure:
                     if not is_healable(failure):
                         raise
-                    target = await self._healer.reuse(progress, failure, deadline)
+                    target = await self._first_tries.resolve(progress, failure)
+                    if target is None:
+                        target = await self._healer.reuse(progress, failure, deadline)
             await self._actions.perform(progress, target, deadline)
         finally:
             await self._browser.release(progress.pinned)
@@ -379,6 +447,7 @@ class StepRunner:
             error=error,
             artifacts=artifacts,
             heal=progress.heal_report(),
+            found=progress.verified_found(),
         )
 
     def _attribute(self, progress: StepProgress, error: MendworkError) -> MendworkError:

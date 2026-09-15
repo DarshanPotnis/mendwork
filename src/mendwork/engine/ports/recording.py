@@ -12,7 +12,6 @@ from mendwork.engine.domain.recording import RecordingNotice
 from mendwork.engine.ports.browser import BrowserPort
 from mendwork.engine.ports.browser_types import ElementRef, WatchId
 from mendwork.engine.ports.recording_types import (
-    AncestorFacts,
     CaptureRef,
     FieldText,
     NavigationRecord,
@@ -59,12 +58,6 @@ class RecordingBrowser(BrowserPort, Protocol):
 
     async def finish_capture(self, ref: CaptureRef) -> None:
         """Release the page: the capture is recorded, ignored, or abandoned."""
-        ...
-
-    async def scope_ancestors(
-        self, element: ElementRef, *, limit: int
-    ) -> tuple[AncestorFacts, ...]:
-        """Up to ``limit`` ancestors of the element, nearest first."""
         ...
 
     async def read_field_text(self, element: ElementRef) -> FieldText:

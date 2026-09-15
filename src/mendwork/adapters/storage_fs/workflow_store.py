@@ -24,6 +24,7 @@ from mendwork.engine.errors import (
     PolicyViolation,
     ValidationIssue,
     VersionConflict,
+    WorkflowStoreUnavailable,
     WorkflowValidationError,
 )
 
@@ -46,20 +47,35 @@ class FileWorkflowStore:
         self._ops: FileOps = file_ops if file_ops is not None else OsFileOps()
 
     async def publish(self, version: WorkflowVersion) -> None:
-        """Store a new version atomically; see the module docstring for the mechanism."""
-        await asyncio.to_thread(self._publish, version)
+        """Store a new version atomically; see the module docstring for the mechanism.
+
+        Raises WorkflowStoreUnavailable when the file system refuses.
+        """
+        try:
+            await asyncio.to_thread(self._publish, version)
+        except OSError as error:
+            raise _unavailable(self._root, error) from error
 
     async def get(self, workflow_id: WorkflowId, version: int) -> WorkflowVersion | None:
         """One version, or None if it does not exist."""
-        return await asyncio.to_thread(self._get, workflow_id, version)
+        try:
+            return await asyncio.to_thread(self._get, workflow_id, version)
+        except OSError as error:
+            raise _unavailable(self._root, error) from error
 
     async def latest(self, workflow_id: WorkflowId) -> WorkflowVersion | None:
         """The highest-numbered version, or None if the workflow has none."""
-        return await asyncio.to_thread(self._latest, workflow_id)
+        try:
+            return await asyncio.to_thread(self._latest, workflow_id)
+        except OSError as error:
+            raise _unavailable(self._root, error) from error
 
     async def versions(self, workflow_id: WorkflowId) -> tuple[int, ...]:
         """Every stored version number, ascending."""
-        return await asyncio.to_thread(self._versions, self._directory(workflow_id))
+        try:
+            return await asyncio.to_thread(self._versions, self._directory(workflow_id))
+        except OSError as error:
+            raise _unavailable(self._root, error) from error
 
     def _directory(self, workflow_id: str) -> Path:
         slug = parse_workflow_id(workflow_id)
@@ -172,4 +188,12 @@ def _integrity_error(directory: Path, problem: str) -> WorkflowValidationError:
             ),
         ),
         source=str(directory),
+    )
+
+
+def _unavailable(root: Path, error: OSError) -> WorkflowStoreUnavailable:
+    return WorkflowStoreUnavailable(
+        f"the workflow store {root} cannot be used: {error.strerror or type(error).__name__}",
+        root=str(root),
+        errno=error.errno,
     )

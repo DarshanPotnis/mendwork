@@ -6,6 +6,7 @@ from typing import Final
 import pytest
 
 from mendwork.engine.domain.checkpoints import Checkpoint
+from mendwork.engine.domain.enums import VerificationStrength
 from mendwork.engine.domain.heals import RejectionReason
 from mendwork.engine.domain.steps import Step
 from mendwork.engine.healing.pick_rules import (
@@ -13,7 +14,7 @@ from mendwork.engine.healing.pick_rules import (
     surviving_identity_attributes,
     verification_rejection,
 )
-from mendwork.engine.safety.heal_policy import VerificationStrength, verification_strength
+from mendwork.engine.safety.heal_policy import verification_strength
 from tests.unit.healing.builders import export_button, live, reference_field, step
 from tests.unit.replay.builders import healing
 from tests.workflows import click_step

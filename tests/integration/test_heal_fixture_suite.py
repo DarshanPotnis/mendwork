@@ -81,6 +81,16 @@ async def test_no_case_in_the_suite_acted_on_a_wrong_element(
     assert wrong == {}
 
 
+async def test_every_heal_fingerprinted_the_element_it_acted_on_so_it_could_become_a_version(
+    heal_suite: Mapping[str, CaseOutcome],
+) -> None:
+    healed = {case_id for case_id, outcome in heal_suite.items() if outcome.captured is not None}
+    uncaptured = {case_id for case_id, outcome in heal_suite.items() if outcome.captured is False}
+
+    assert uncaptured == set()
+    assert len(healed) == 14
+
+
 async def test_rung3_only_takes_up_what_rung2_declined_and_asks_only_when_it_can_help(
     heal_suite: Mapping[str, CaseOutcome],
 ) -> None:

@@ -52,8 +52,10 @@ from mendwork.engine.domain.documents import parse_workflow_document, workflow_d
 from mendwork.engine.domain.enums import ActionType
 from mendwork.engine.domain.events import RunEvent
 from mendwork.engine.domain.identifiers import SecretName
+from mendwork.engine.domain.patches import WorkflowSource
 from mendwork.engine.domain.runs import Run, RunStatus, StepResult, StepStatus
 from mendwork.engine.domain.workflow import WorkflowVersion
+from mendwork.engine.patching.patcher import Patcher
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.settings import Settings
 
@@ -127,6 +129,9 @@ class CaseOutcome:
     wrong: tuple[str, ...]
     detail: str
     model_calls: int = 0
+    captured: bool | None = None
+    """Whether a heal's element was fingerprinted, so it could become a version (ADR 0013); None
+    when the case's step was not healed."""
 
     def summary(self) -> str:
         """One line a person can compare between runs."""
@@ -278,10 +283,14 @@ async def run_with_ground_truth(
     abstain_steps: frozenset[str] = frozenset(),
     client: httpx.AsyncClient | None = None,
     asked: list[Asked] | None = None,
+    patcher: Patcher | None = None,
+    source: WorkflowSource | None = None,
 ) -> GroundTruthRun:
     """Replay a workflow as ``mendwork run`` would, checking every action against ground truth.
 
     ``asked``, when given, collects every model call with the lines that really were the target.
+    ``patcher`` and ``source``, when given, save the run's verified heals as versions and try
+    pending patches first, exactly as ``mendwork run`` does (ADR 0013).
     """
     tracker = StepTracker()
     checks: list[ActionCheck] = []
@@ -313,8 +322,9 @@ async def run_with_ground_truth(
             client=client,
             asked=asked,
         ),
+        patcher=patcher,
     )
-    run = await replayer.run(workflow, inputs)
+    run = await replayer.run(workflow, inputs, source=source)
     return GroundTruthRun(
         run,
         tuple(tracker.events),
@@ -410,8 +420,17 @@ def classify(case: HealCase, replay: GroundTruthRun) -> CaseOutcome:
         verdict = Verdict.ABSTAINED
     else:
         verdict = Verdict.FAILED
+    healed = heal is not None and heal.healed_rung is not None
+    captured = (step.found is not None and step.found.fingerprint is not None) if healed else None
     return CaseOutcome(
-        case, verdict, rung, reason, wrong, detail, model_calls=replay.run.model_usage.calls
+        case,
+        verdict,
+        rung,
+        reason,
+        wrong,
+        detail,
+        model_calls=replay.run.model_usage.calls,
+        captured=captured,
     )
 
 

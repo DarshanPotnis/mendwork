@@ -116,6 +116,7 @@ def test_every_page_script_is_type_checked_self_contained_and_namespaced() -> No
         "element_facts.js",
         "element_identity.js",
         "element_keys.js",
+        "element_view.js",
         "extract_candidates.js",
         "field_text.js",
         "field_value.js",

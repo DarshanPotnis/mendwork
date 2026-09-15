@@ -50,6 +50,7 @@ from mendwork.engine.healing.gates import GateContext, HealStop, before_acting, 
 from mendwork.engine.healing.ladder import ClimbResult, climb, is_healable
 from mendwork.engine.healing.recovery import RestoreRequest, StateRestorer
 from mendwork.engine.healing.run_state import RunHealState
+from mendwork.engine.patching.capture import HealCapture
 from mendwork.engine.ports.browser import BrowserPort
 from mendwork.engine.ports.browser_types import ElementRef
 from mendwork.engine.ports.timer import Timer
@@ -91,6 +92,7 @@ class StepHealer:
         scrubber: SecretScrubber,
         log: structlog.stdlib.BoundLogger,
         may_act: Callable[[RiskLevel], bool] = heal_may_act,
+        capture: HealCapture | None = None,
     ) -> None:
         self._browser = browser
         self._actions = actions
@@ -104,6 +106,8 @@ class StepHealer:
         self._scrubber = scrubber
         self._log = log
         self._may_act = may_act
+        self._capture = capture
+        """Fingerprints a healed element before its action; without it, heals are not captured."""
         self._record = HealRecorder(emitter)
 
     async def heal(self, progress: StepProgress, failure: MendworkError) -> None:
@@ -213,11 +217,17 @@ class StepHealer:
             healed_rung=accepted.rung,
         )
         await self._emitter.target_resolved(progress.index, step.id, progress.target)
+        if self._capture is not None:
+            # Before the action: a click can take the element off the page (ADR 0013).
+            progress.found = await self._capture.capture(
+                progress.index, step.id, candidate.element, heal_deadline
+            )
         deadline = Deadline.after(self._timer, self._config.step_timeout_ms).earliest(heal_deadline)
         target = ActionTarget(candidate.element, accepted.identity, mask_selector(candidate.facts))
         try:
             await self._actions.perform(progress, target, deadline)
         except CheckpointFailed as failed:
+            progress.found = None
             self._state.count_heal_action(step.id)
             await self._record.verified(progress, _checkpoint(progress, failed))
             excluded.add(accepted.scored.signature)
@@ -226,6 +236,7 @@ class StepHealer:
         except _BEFORE_ACTION_ERRORS:
             if progress.action_performed:
                 raise
+            progress.found = None
             settle_pending(progress, Verification.NOT_PERFORMED)
             excluded.add(accepted.scored.signature)
             await self._release(progress, candidate.element)

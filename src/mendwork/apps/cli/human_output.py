@@ -47,6 +47,7 @@ from mendwork.engine.domain.runs import (
     TraceWithheldReason,
 )
 from mendwork.engine.domain.targets import SelectorOutcome, TargetEvidence
+from mendwork.engine.reporting.words import run_patch_lines
 
 _MODEL_RUNG = 3
 _STOPPED_WORDS = {
@@ -279,7 +280,12 @@ def _target_cell(step: StepResult) -> str:
 
 def _outcome(run: Run, run_directory: Path) -> list[str]:
     usage = model_usage_line(run.model_usage)
-    return _status_lines(run, run_directory) + ([usage] if usage is not None else [])
+    patches = run_patch_lines(run)
+    return (
+        _status_lines(run, run_directory)
+        + ([usage] if usage is not None else [])
+        + (["Patches:", *(f"  {line}" for line in patches)] if patches else [])
+    )
 
 
 def _status_lines(run: Run, run_directory: Path) -> list[str]:

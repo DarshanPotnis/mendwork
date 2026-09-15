@@ -198,22 +198,35 @@ def _invalid(evidence: ModelChoiceEvidence) -> list[ModelCall]:
 
 def _totals_text(totals: ModelUsageTotals) -> str:
     calls = f"{totals.calls} call{'' if totals.calls == 1 else 's'}"
-    tokens = f"{totals.input_tokens} tokens in, {totals.output_tokens} out"
     seconds = f"{totals.latency_ms / 1000:.2f} s"
-    return f"{calls} · {tokens} · {seconds} · {_cost(totals)}"
+    return f"{calls} · {_tokens(totals)} · {seconds} · {_cost(totals)}"
+
+
+def _tokens(totals: ModelUsageTotals) -> str:
+    """Token counts, never showing a call whose provider reported none as 0 tokens."""
+    counted = f"{totals.input_tokens} tokens in, {totals.output_tokens} out"
+    unreported = totals.unreported_token_calls
+    if unreported == 0:
+        return counted
+    if unreported >= totals.calls:
+        return "token counts not reported"
+    return (
+        f"{counted} for {totals.calls - unreported} of {totals.calls} calls, not for {unreported}"
+    )
 
 
 def _cost(totals: ModelUsageTotals) -> str:
-    priced = totals.calls - totals.unpriced_calls
-    unknown = (
-        f"cost unknown for {totals.unpriced_calls} call{'' if totals.unpriced_calls == 1 else 's'} "
-        "(no price in MENDWORK_MODEL_PRICES)"
-    )
+    """The estimated cost, never showing a call with no configured price as free."""
+    unpriced = totals.unpriced_calls
+    priced = totals.calls - unpriced
+    reason = "(no price in MENDWORK_MODEL_PRICES)"
     if priced == 0:
-        return unknown
+        return f"cost unknown for {unpriced} call{'' if unpriced == 1 else 's'} {reason}"
     amount = totals.estimated_cost_usd
     shown = f"est. ${amount:.2f}" if amount == 0 or amount >= _CENT else f"est. ${amount:.6f}"
-    return shown if totals.unpriced_calls == 0 else f"{shown}; {unknown}"
+    if unpriced == 0:
+        return shown
+    return f"{shown} for {priced} of {totals.calls} calls, cost unknown for {unpriced} {reason}"
 
 
 def _unavailable_step(context: Mapping[str, JsonValue], name: str) -> str:

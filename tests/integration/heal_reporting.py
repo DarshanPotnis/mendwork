@@ -44,6 +44,9 @@ def summary_lines(outcomes: Mapping[str, CaseOutcome], *, verbose: bool) -> list
     gaps = unresolved_heals(outcomes)
     wrong = sum(len(outcome.wrong) for outcome in outcomes.values())
     lines.append(f"wrong actions across the suite: {wrong}")
+    healed = [outcome for outcome in outcomes.values() if outcome.captured is not None]
+    captured = sum(1 for outcome in healed if outcome.captured)
+    lines.append(f"heals that captured a fingerprint: {captured} of {len(healed)}")
     lines.append(
         "heal_expected cases not resolved: "
         + (", ".join(outcome.case.id for outcome in gaps) or "none")

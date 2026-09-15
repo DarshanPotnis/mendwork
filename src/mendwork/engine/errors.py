@@ -190,6 +190,10 @@ class ArtifactStoreUnavailable(InfrastructureError):
     """Run artifacts could not be written."""
 
 
+class WorkflowStoreUnavailable(InfrastructureError):
+    """Workflow versions or pending patches could not be read or written."""
+
+
 class AuditLogCorrupt(InfrastructureError):
     """The audit log cannot be read or written, or its chain of entries is broken.
 
@@ -286,3 +290,7 @@ class UnsupportedSchemaVersion(WorkflowValidationError):
 
 class VersionConflict(MendworkError):
     """A publish conflicts with stored versions: the number is taken or the parent is missing."""
+
+
+class UnknownWorkflowVersion(MendworkError):
+    """The workflow store has no versions of the workflow, or not the version asked for."""

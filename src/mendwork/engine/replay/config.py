@@ -37,5 +37,7 @@ class ReplayConfig(DomainModel):
     settle_timeout_ms: Milliseconds = Field(ge=1)
     """How long to wait for a quiet DOM before evaluating selectors on a busy one."""
     settle_quiet_frames: int = Field(ge=1, le=60)
+    scope_ancestors_max: int = Field(ge=1, le=20)
+    """How many ancestors a healed element's selectors may be scoped inside, like recorded ones."""
     retry: RetryPolicy
     healing: HealingConfig

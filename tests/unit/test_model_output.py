@@ -278,8 +278,23 @@ def test_an_out_of_range_answer_and_a_changed_page_explain_themselves() -> None:
                 estimated_cost_usd=Decimal("0.25"),
                 unpriced_calls=1,
             ),
-            "Model: 2 calls · 800 tokens in, 40 out · 2.00 s · est. $0.25; cost unknown for 1 call "
-            "(no price in MENDWORK_MODEL_PRICES)",
+            "Model: 2 calls · 800 tokens in, 40 out · 2.00 s · est. $0.25 for 1 of 2 calls, cost "
+            "unknown for 1 (no price in MENDWORK_MODEL_PRICES)",
+        ),
+        (
+            ModelUsageTotals(calls=1, latency_ms=900, unreported_token_calls=1),
+            "Model: 1 call · token counts not reported · 0.90 s · est. $0.00",
+        ),
+        (
+            ModelUsageTotals(
+                calls=2,
+                input_tokens=431,
+                output_tokens=24,
+                latency_ms=1_800,
+                unreported_token_calls=1,
+            ),
+            "Model: 2 calls · 431 tokens in, 24 out for 1 of 2 calls, not for 1 · 1.80 s · "
+            "est. $0.00",
         ),
     ],
 )

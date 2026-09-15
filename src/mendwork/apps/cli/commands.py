@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from mendwork.adapters.artifacts_local.store import LocalArtifactStore
 from mendwork.adapters.secrets_env.naming import secret_variable_name
-from mendwork.apps.cli.exit_codes import ExitCode, exit_code_for
+from mendwork.apps.cli.exit_codes import ExitCode
 from mendwork.apps.cli.heal_output import egress_next_step
 from mendwork.apps.cli.human_output import render_summary
 from mendwork.apps.cli.validate import format_issue
@@ -85,32 +85,30 @@ def read_record(artifacts: LocalArtifactStore, run_id: RunId | None) -> Run | No
 
 
 def report_run(
-    run: Run, code: int, runs_directory: Path, output: OutputMode, stdout: TextIO
+    run: Run,
+    code: int,
+    runs_directory: Path,
+    output: OutputMode,
+    stdout: TextIO,
+    *,
+    report: Path | None = None,
 ) -> None:
-    """A finished run's summary, or its JSON result line."""
+    """A finished run's summary and where its report is, or its JSON result line."""
     if output is OutputMode.JSON:
-        result_line(stdout, code, run=json.loads(run.model_dump_json()))
+        fields: dict[str, object] = {"run": json.loads(run.model_dump_json())}
+        if report is not None:
+            fields["report"] = str(report)
+        result_line(stdout, code, **fields)
     else:
         stdout.write(render_summary(run, runs_directory) + "\n")
+        if report is not None:
+            stdout.write(report_line(report) + "\n")
     stdout.flush()
 
 
-def report_interrupted(
-    artifacts: LocalArtifactStore,
-    run_id: RunId | None,
-    output: OutputMode,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int:
-    """What an interrupted run recorded, and its exit code."""
-    finished = read_record(artifacts, run_id)
-    if finished is None:
-        return report_nothing_recorded(
-            "interrupted before the run started; nothing was recorded", output, stdout, stderr
-        )
-    code = exit_code_for(finished)
-    report_run(finished, code, artifacts.runs_root, output, stdout)
-    return code
+def report_line(report: Path) -> str:
+    """The line that points a person at a run's HTML report."""
+    return f"Report: {report.resolve().as_uri()}"
 
 
 def report_nothing_recorded(

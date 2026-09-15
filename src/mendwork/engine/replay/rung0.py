@@ -68,8 +68,14 @@ async def resolve_target(
     settle_timeout_ms: int,
     quiet_frames: int,
     scrubber: SecretScrubber,
+    patient: bool = True,
 ) -> ResolvedTarget:
-    """Resolve a fingerprint to one verified element, or raise with evidence."""
+    """Resolve a fingerprint to one verified element, or raise with evidence.
+
+    An impatient resolution decides on the first consistent reading of the settled page and never
+    waits for the page to change: a pending patch's first try, made after the recorded target has
+    already waited (ADR 0013).
+    """
     started = deadline.timer.monotonic()
     last_stable: MendworkError | None = None
     while True:
@@ -87,7 +93,7 @@ async def resolve_target(
             if stable and isinstance(attempt.outcome, MendworkError):
                 last_stable = attempt.outcome
                 decisive = settling.quiet and not isinstance(attempt.outcome, TargetNotFound)
-                if decisive or deadline.expired:
+                if decisive or deadline.expired or not patient:
                     raise _waited(attempt.outcome, deadline, started)
             elif deadline.expired:
                 raise _waited(last_stable or _never_stable(), deadline, started)

@@ -27,7 +27,7 @@ from mendwork.engine.domain.checkpoints import (
     UrlMatches,
 )
 from mendwork.engine.domain.credentials import detect_secret_field, tokenize
-from mendwork.engine.domain.enums import RiskLevel
+from mendwork.engine.domain.enums import RiskLevel, VerificationStrength
 from mendwork.engine.domain.steps import (
     FillStep,
     NavigateStep,
@@ -56,15 +56,6 @@ STRONG_CHECKPOINTS: Final = (ElementVisible, TextPresent, DownloadCompleted, Res
 WEAK_CHECKPOINTS: Final = (UrlMatches, FieldHasValue)
 """Checkpoints another control can satisfy just as well: every link to a destination reaches its
 URL, and any field holds a value typed into it (ADR 0010)."""
-
-
-class VerificationStrength(StrEnum):
-    """How much a step's checkpoints prove about which element was acted on."""
-
-    STRONG = "strong"
-    WEAK = "weak"
-    """Only ``url_matches`` or ``field_has_value``: a look-alike can pass them."""
-    NONE = "none"
 
 
 class FailedHealRecovery(StrEnum):

@@ -420,6 +420,29 @@ E2E test (the key guarantee): chaos seed at level 3 → run heals and creates v2
 Acceptance: make check passes; attach an example HTML report generated from the e2e test.
 ```
 
+**As built (ADR 0013).**
+
+- **Selectors.** A heal's new target is derived by the recorder's own `TargetRecorder` just before
+  the healed action, so its selectors are proven exactly as recorded ones are.
+- **Files.** A workflow file is never written. `mendwork run` matches it by content to the versions
+  in `MENDWORK_WORKFLOW_STORE_DIR` and runs the latest when every later version came from a heal or
+  a rollback; otherwise it runs the file as written and saves no heals. `--exact` runs the file as
+  written. `mendwork import` makes a file the latest version: it shows the version it creates, the
+  steps that differ, and the pending patches those steps strand, then asks (`--yes` for scripts).
+- **Which heals are saved.** Heals are saved only from succeeded runs. Weakly verified heals are
+  saved and marked weak. A heal a rollback undid is never saved again automatically.
+- **Pending patches.** Under `after_n_successes`, a pending patch is tried first, but only after the
+  recorded target is not found or drifted.
+- **Crash safety.** Promotion publishes the version, then replaces the pending patches, then writes
+  the run's final record. A test kills the process right after the publish and proves the next run
+  neither duplicates nor loses the patch.
+- **Diff.** `mendwork diff <workflow> <from> [<to>]` compares against the latest version by default.
+- **Report.** Every run writes `report.html` beside its record. It is self-contained, behind a
+  Content-Security-Policy, with scrubbed text, masked screenshots within an 8 MiB budget, and the
+  healed element outlined.
+- **The guarantee** is proven on a Rung 3 heal at level 3 seed 3: in process against ground truth,
+  and through the CLI against a loopback model server that counts its requests.
+
 ---
 
 ## Phase 9 — Benchmark and scorecard (MVP complete)

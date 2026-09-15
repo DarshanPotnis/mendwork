@@ -1,0 +1,294 @@
+:root {
+  color-scheme: light dark;
+  --ground: #f7f7f5;
+  --panel: #ffffff;
+  --ink: #1d1d1f;
+  --muted: #5f6368;
+  --line: #d9d9d6;
+  --ok: #1f7a3f;
+  --bad: #b3261e;
+  --stop: #8a5a00;
+  --idle: #7a7a7a;
+  --mark: #d21f69;
+  --strong: #1f7a3f;
+  --weak: #8a5a00;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #151517;
+    --panel: #1f1f23;
+    --ink: #ececef;
+    --muted: #a8a8b0;
+    --line: #34343a;
+    --ok: #6fcf8e;
+    --bad: #ff8a80;
+    --stop: #f0c05a;
+    --idle: #9a9aa2;
+    --mark: #ff5fa2;
+    --strong: #6fcf8e;
+    --weak: #f0c05a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.25;
+  margin: 0 0 8px;
+}
+
+h1 {
+  font-size: 1.6rem;
+}
+
+h2 {
+  font-size: 1.2rem;
+}
+
+h3 {
+  font-size: 1rem;
+  margin-top: 16px;
+}
+
+header.run,
+section.timeline,
+article.step {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+
+article.step {
+  border-left: 5px solid var(--idle);
+}
+
+article.step.ok {
+  border-left-color: var(--ok);
+}
+
+article.step.bad {
+  border-left-color: var(--bad);
+}
+
+article.step.stop {
+  border-left-color: var(--stop);
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 8px 0;
+}
+
+dt {
+  color: var(--muted);
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.status {
+  display: inline-block;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.ok {
+  color: inherit;
+}
+
+.status.ok,
+.checks .passed {
+  color: var(--ok);
+}
+
+.status.bad,
+.checks .failed,
+.error {
+  color: var(--bad);
+}
+
+.status.stop,
+.warning {
+  color: var(--stop);
+}
+
+.intent {
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+.timeline ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.timeline li {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) 1fr 4.5rem 4.5rem minmax(6rem, 9rem);
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+  border-top: 1px solid var(--line);
+}
+
+.timeline a {
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+
+.bar {
+  display: block;
+  height: 10px;
+  background: var(--line);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  background: var(--idle);
+}
+
+.timeline li.ok .fill {
+  background: var(--ok);
+}
+
+.timeline li.bad .fill {
+  background: var(--bad);
+}
+
+.timeline li.stop .fill {
+  background: var(--stop);
+}
+
+.badge {
+  font-size: 0.75rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 8px;
+  text-align: center;
+}
+
+.badge.strong {
+  color: var(--strong);
+}
+
+.badge.weak,
+.badge.none {
+  color: var(--weak);
+}
+
+.checks {
+  padding-left: 20px;
+}
+
+figure.shot {
+  margin: 12px 0;
+}
+
+.frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  border: 1px solid var(--line);
+}
+
+.frame img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.mark {
+  position: absolute;
+  outline: 3px solid var(--mark);
+  outline-offset: 2px;
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+figcaption,
+.missing {
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.table {
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9rem;
+}
+
+th,
+td {
+  text-align: left;
+  vertical-align: top;
+  padding: 4px 8px;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+tr.changed td {
+  font-weight: 600;
+}
+
+details {
+  margin-top: 12px;
+}
+
+summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+footer {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .timeline li {
+    grid-template-columns: 1fr 4rem;
+  }
+
+  .timeline .bar,
+  .timeline .badge {
+    grid-column: 1 / -1;
+  }
+
+  dl {
+    grid-template-columns: 1fr;
+  }
+}

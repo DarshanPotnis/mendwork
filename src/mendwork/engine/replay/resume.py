@@ -15,7 +15,9 @@ approved step runs from its start:
    over a changed page; a fresh run makes a fresh proposal.
 
 The run keeps one record: the resume is a new segment, its events continue the run's sequence, its
-evidence is named for its segment, and its model calls count against the run's budget.
+evidence is named for its segment, and its model calls count against the run's budget. When the run
+saves heals, a resume that succeeds promotes every verified heal of the run, the approved one
+included, exactly as a first execution does (ADR 0013).
 """
 
 import asyncio
@@ -31,6 +33,7 @@ from mendwork.engine.domain.runs import STOPPING_STATUSES, Run, RunSegmentKind, 
 from mendwork.engine.domain.workflow import WorkflowVersion
 from mendwork.engine.errors import MendworkError, SecretUnavailable
 from mendwork.engine.healing.model_rung import ModelRung
+from mendwork.engine.patching.patcher import Patcher
 from mendwork.engine.ports.events import EventSink
 from mendwork.engine.ports.resolver import HostResolver
 from mendwork.engine.replay.approval_records import resumed, settle
@@ -65,11 +68,13 @@ class Resumer:
         events: EventSink,
         resolver: HostResolver,
         model: ModelRung | None = None,
+        patcher: Patcher | None = None,
     ) -> None:
         self._ports = ports
         self._events = events
         self._resolver = resolver
         self._model = model
+        self._patcher = patcher
 
     async def prepare(
         self, run: Run, workflow: WorkflowVersion, proposal: HealProposal
@@ -129,6 +134,8 @@ class Resumer:
             if self._model is not None
             else None
         )
+        patcher = self._patcher if run.source is not None else None
+        saves = patcher is not None and run.source is not None and run.source.saves_heals
         execution = Execution(
             run_id=run.run_id,
             workflow=workflow,
@@ -149,6 +156,8 @@ class Resumer:
             downloads=frozenset(
                 step.artifacts.download for step in run.steps if step.artifacts.download is not None
             ),
+            first_tries=await patcher.first_tries(workflow) if saves and patcher else {},
+            patcher=patcher,
         )
         return await execute(ports, execution, opening=approved_step(workflow, proposal))
 

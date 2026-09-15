@@ -14,9 +14,18 @@ from pydantic import Field, SecretStr
 from mendwork.engine.domain.base import DomainModel
 from mendwork.engine.domain.runs import TraceWithheldReason
 from mendwork.engine.domain.targets import IdentityReport
+from mendwork.engine.ports.element_types import Box
 
 ElementRef = NewType("ElementRef", str)
 WatchId = NewType("WatchId", str)
+
+
+class ElementView(DomainModel):
+    """A screenshot around one element, and where the element sits in it."""
+
+    png: bytes
+    box: Box
+    """The element's visible part, as fractions of the image."""
 
 
 class DomEpoch(DomainModel):

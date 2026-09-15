@@ -23,14 +23,17 @@ from mendwork.engine.ports.artifacts import ArtifactStore
 from mendwork.engine.ports.browser import BrowserPort
 from mendwork.engine.ports.browser_types import (
     DownloadObservation,
+    ElementRef,
     TraceDisabled,
     TraceNotSaved,
     TraceSaved,
 )
+from mendwork.engine.ports.element_types import Box
 from mendwork.engine.replay.artifact_names import (
     FIRST_SEGMENT,
     dom_snapshot_name,
     download_name,
+    found_screenshot_name,
     screenshot_name,
     trace_name,
 )
@@ -90,6 +93,26 @@ class EvidenceRecorder:
             self._note(problems, "screenshot", error)
         except MendworkError as error:
             self._note(problems, "screenshot", error)
+        return None
+
+    async def element_view(
+        self, index: int, step_id: StepId, element: ElementRef
+    ) -> tuple[ArtifactName, Box] | None:
+        """A screenshot around a healed element just before its action, masked like every other.
+
+        For the run's report only: a view that cannot be taken or kept is logged, and the heal goes
+        on without it.
+        """
+        try:
+            view = await self._browser.element_view(
+                element, mask=tuple(self._masks), timeout_ms=self._timeout_ms
+            )
+            name = found_screenshot_name(index, step_id, self._segment)
+            return await self._artifacts.write(self._run_id, name, view.png), view.box
+        except MendworkError as error:
+            self._log.warning(
+                "evidence_not_captured", evidence="element view", error_type=type(error).__name__
+            )
         return None
 
     async def dom_snapshot(

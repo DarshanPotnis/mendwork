@@ -3,8 +3,9 @@
 !.env.example
 .claude/settings.local.json
 
-# Run output
+# Run output, and workflow versions stored by runs (MENDWORK_WORKFLOW_STORE_DIR)
 artifacts/
+workflow-store/
 
 # Python
 __pycache__/
