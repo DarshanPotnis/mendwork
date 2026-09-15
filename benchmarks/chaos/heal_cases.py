@@ -39,19 +39,22 @@ from benchmarks.chaos.ground_truth import (
     StepTracker,
 )
 from benchmarks.chaos.heal_pairs import ABSTAIN, HEAL, Category, HealPairTable
+from benchmarks.chaos.local_egress import local_policy
 from benchmarks.chaos.models import Asked, ModelMode, model_rung_for
 from benchmarks.chaos.workflow_targets import load_workflow_targets
 from mendwork.adapters.artifacts_local.store import LocalArtifactStore
 from mendwork.adapters.browser_playwright.launcher import PlaywrightLauncher
 from mendwork.adapters.secrets_env.naming import secret_variable_name
+from mendwork.adapters.system.resolver import SystemHostResolver
 from mendwork.adapters.workflow_yaml.codec import WorkflowYamlCodec
-from mendwork.apps.cli.wiring import build_replayer, session_options
+from mendwork.apps.cli.wiring import build_replayer, egress_enforcement, session_options
 from mendwork.engine.domain.documents import parse_workflow_document, workflow_document
 from mendwork.engine.domain.enums import ActionType
 from mendwork.engine.domain.events import RunEvent
 from mendwork.engine.domain.identifiers import SecretName
 from mendwork.engine.domain.runs import Run, RunStatus, StepResult, StepStatus
 from mendwork.engine.domain.workflow import WorkflowVersion
+from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.settings import Settings
 
 WORKFLOW_IDS: Final = ("download_report", "view_order_detail")
@@ -283,7 +286,11 @@ async def run_with_ground_truth(
     tracker = StepTracker()
     checks: list[ActionCheck] = []
     wrong_actions: list[str] = []
-    inner = await PlaywrightLauncher.create(browser, session_options(settings))
+    # Every run targets the local portal by loopback address, so no name is ever resolved.
+    resolver = SystemHostResolver()
+    inner = await PlaywrightLauncher.create(
+        browser, session_options(settings), egress_enforcement(settings, resolver)
+    )
     launcher = GroundTruthLauncher(inner, targets, tracker, checks, wrong_actions, signed_in)
     artifacts = LocalArtifactStore(directory)
     replayer = build_replayer(
@@ -292,6 +299,11 @@ async def run_with_ground_truth(
         artifacts=artifacts,
         events=tracker,
         environ={secret_variable_name(SecretName("portal_password")): DEMO_PASSWORD},
+        egress=local_policy(inputs.values()),
+        resolver=resolver,
+        # The only secret is the chaos portal's demo password, which the portal publishes in its
+        # own JavaScript, so a benchmark needs no scrubber shared with its log pipeline.
+        scrubber=SecretScrubber(),
         model=model_rung_for(
             model,
             settings,

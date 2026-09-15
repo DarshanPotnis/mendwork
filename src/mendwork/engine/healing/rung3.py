@@ -50,7 +50,7 @@ from mendwork.engine.errors import (
     ProviderError,
     TargetNotFound,
 )
-from mendwork.engine.healing.candidates import CandidateSignature, found_kind, recorded_kind
+from mendwork.engine.healing.candidates import SignatureMatch, found_kind, recorded_kind
 from mendwork.engine.healing.checks import safety_rejection
 from mendwork.engine.healing.choice import on_the_list
 from mendwork.engine.healing.context import (
@@ -96,9 +96,12 @@ class _Stop:
 async def run_rung3(
     context: LadderContext, request: ClimbRequest, declined: Rung2Decline
 ) -> Rung3Result:
-    """Ask the model to choose among Rung 2's eligible candidates, and judge its choice."""
+    """Ask the model to choose among Rung 2's eligible candidates, and judge its choice.
+
+    A request that reuses an earlier pick judges it again without asking, so it needs no model.
+    """
     chooser = context.chooser
-    if chooser is None:
+    if chooser is None and request.reuse is None:
         raise MendworkError("Rung 3 needs a configured model", step_id=request.step.id)
     return await _Rung3(context, request, declined, chooser).run()
 
@@ -111,12 +114,12 @@ class _Rung3:
         context: LadderContext,
         request: ClimbRequest,
         declined: Rung2Decline,
-        chooser: ModelChooser,
+        chooser: ModelChooser | None,
     ) -> None:
         self._context = context
         self._request = request
         self._declined = declined
-        self._chooser = chooser
+        self._configured = chooser
         scrubber = context.scrubber
         self._judged = eligibility(
             declined.ranked, lambda item: describe_candidate(item.candidate, scrubber)
@@ -127,6 +130,12 @@ class _Rung3:
         self._answer: ChoiceResult | None = None
         self._unavailable: str | None = None
         self._budget: BudgetStop | None = None
+
+    @property
+    def _chooser(self) -> ModelChooser:
+        if self._configured is None:
+            raise MendworkError("Rung 3 needs a configured model", step_id=self._request.step.id)
+        return self._configured
 
     async def run(self) -> Rung3Result:
         if self._request.reuse is not None:
@@ -168,10 +177,11 @@ class _Rung3:
             )
         return await self._judge(self._sent[answer.choice - 1])
 
-    async def _reuse(self, signature: CandidateSignature) -> Rung3Result:
-        """During a restore, the step's own verified pick, judged again without a model."""
+    async def _reuse(self, match: SignatureMatch) -> Rung3Result:
+        """An earlier pick judged again without a model: the step's own verified pick during a
+        restore, or the element a person approved as a resumed run reaches the step."""
         pick = next(
-            (item for item in self._judged.eligible if item.item.signature == signature), None
+            (item for item in self._judged.eligible if match.matches(item.item.signature)), None
         )
         if pick is None:
             return await self._finish(RungOutcome.NO_ELIGIBLE)

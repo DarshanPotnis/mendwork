@@ -2,15 +2,29 @@
 
 The same sequence runs for a target Rung 0 verified, a healed target, and a step replayed
 while a page is restored, so a heal is held to exactly the checks and checkpoints an
-unhealed step is. A quiet step (a replay) emits no events and keeps no download.
+unhealed step is. A quiet step (a replay) emits no events and keeps no download. After the
+action and after the checkpoints, a new tab or window fails the step, and so does anything the
+run's egress policy refused while the step ran (ADR 0011).
+
+An irreversible step's dispatch is journaled before the action is sent, so a run interrupted from
+that moment on needs review; while any action is being sent, the step's progress says so.
 """
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 import structlog
 
+from mendwork.engine.domain.enums import RiskLevel
 from mendwork.engine.domain.selectors import Selector
-from mendwork.engine.domain.steps import ClickStep, FillStep, NavigateStep, PressStep, SelectStep
+from mendwork.engine.domain.steps import (
+    ClickStep,
+    FillStep,
+    NavigateStep,
+    PressStep,
+    SelectStep,
+    Step,
+)
 from mendwork.engine.errors import CheckpointFailed, MendworkError, NavigationError
 from mendwork.engine.ports.browser import BrowserPort
 from mendwork.engine.ports.browser_types import ElementIdentity, ElementRef, SecretText, WatchId
@@ -21,8 +35,10 @@ from mendwork.engine.replay.deadlines import Deadline
 from mendwork.engine.replay.emitter import RunEmitter
 from mendwork.engine.replay.evidence import EvidenceRecorder
 from mendwork.engine.replay.navigation import navigate_with_retry
+from mendwork.engine.replay.navigation_guard import NavigationGuard
 from mendwork.engine.replay.progress import StepProgress
 from mendwork.engine.replay.values import TypedValue, ValueResolver
+from mendwork.engine.safety.egress_blocks import egress_blocked
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.engine.verification.checkpoints import (
     CheckpointContext,
@@ -31,6 +47,9 @@ from mendwork.engine.verification.checkpoints import (
     watch_kinds,
 )
 from mendwork.engine.verification.preaction import ensure_actionable
+
+IrreversibleDispatch = Callable[[int, Step], Awaitable[None]]
+"""Called, and awaited, just before an irreversible step's action is sent."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +70,8 @@ class StepActions:
         *,
         browser: BrowserPort,
         emitter: RunEmitter,
+        guard: NavigationGuard,
+        on_irreversible: IrreversibleDispatch,
         values: ValueResolver,
         evidence: EvidenceRecorder,
         scrubber: SecretScrubber,
@@ -62,6 +83,8 @@ class StepActions:
     ) -> None:
         self._browser = browser
         self._emitter = emitter
+        self._guard = guard
+        self._on_irreversible = on_irreversible
         self._values = values
         self._evidence = evidence
         self._scrubber = scrubber
@@ -76,8 +99,9 @@ class StepActions:
     ) -> None:
         """Check the target can take the action, act, and verify every checkpoint.
 
-        Raises CheckpointFailed when a checkpoint does not pass, and the pre-action errors
-        (TargetNotFound, TargetDrifted, TargetNotActionable) before anything is performed.
+        Raises CheckpointFailed when a checkpoint does not pass, the pre-action errors
+        (TargetNotFound, TargetDrifted, TargetNotActionable) before anything is performed, and
+        EgressBlocked when the egress policy refused anything the step led the browser to.
         """
         step = progress.step
         if target is not None:
@@ -99,7 +123,7 @@ class StepActions:
                 quiet_frames=self._config.settle_quiet_frames,
                 timeout_ms=deadline.cap(self._config.settle_timeout_ms),
             )
-            await self._fail_on_new_pages()
+            await self._fail_on_page_problems()
             await self._verify(progress, watch, target, typed)
         finally:
             if watch is not None:
@@ -109,12 +133,29 @@ class StepActions:
         self, progress: StepProgress, target: ActionTarget | None, deadline: Deadline
     ) -> TypedValue | None:
         step = progress.step
+        if step.risk is RiskLevel.IRREVERSIBLE and not progress.quiet:
+            await self._on_irreversible(progress.index, step)
+        # An interrupt leaves the flag set: it arrived while the action was on its way.
+        progress.dispatching = True
+        try:
+            typed = await self._dispatch(progress, target, deadline)
+        except MendworkError:
+            progress.dispatching = False
+            raise
+        progress.dispatching = False
+        return typed
+
+    async def _dispatch(
+        self, progress: StepProgress, target: ActionTarget | None, deadline: Deadline
+    ) -> TypedValue | None:
+        step = progress.step
         typed: TypedValue | None = None
         match step:
             case NavigateStep():
                 report = await navigate_with_retry(
                     self._browser,
                     self._values.plain(step.value),
+                    guard=self._guard,
                     policy=self._config.retry,
                     navigation_timeout_ms=self._config.navigation_timeout_ms,
                     deadline=self._run_deadline,
@@ -185,7 +226,8 @@ class StepActions:
             if not progress.quiet:
                 await self._emitter.checkpoint(progress.index, step.id, result)
             if not result.passed:
-                await self._fail_on_new_pages()
+                # A refused navigation makes checkpoints fail; the refusal is the real cause.
+                await self._fail_on_page_problems()
                 raise CheckpointFailed(
                     f"checkpoint {position + 1} ({result.kind}) did not pass: {result.reason}",
                     checkpoint_index=position,
@@ -193,9 +235,9 @@ class StepActions:
                     reason=result.reason,
                     detail=result.detail,
                 )
-        await self._fail_on_new_pages()
+        await self._fail_on_page_problems()
 
-    async def _fail_on_new_pages(self) -> None:
+    async def _fail_on_page_problems(self) -> None:
         opened = await self._browser.take_opened_pages()
         if opened:
             raise NavigationError(
@@ -204,6 +246,9 @@ class StepActions:
                 reason="new_page_opened",
                 pages=opened,
             )
+        blocks = await self._browser.take_egress_blocks()
+        if blocks:
+            raise egress_blocked(blocks)
 
 
 def _require(target: ActionTarget | None) -> ActionTarget:

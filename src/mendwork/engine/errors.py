@@ -139,6 +139,41 @@ class RunTimedOut(MendworkError):
     """The run exceeded its overall time limit."""
 
 
+class RunCancelled(MendworkError):
+    """The run was interrupted (Ctrl+C or SIGTERM) before it finished.
+
+    ``interruption`` says how, and ``irreversible_steps`` lists irreversible actions dispatched
+    before it, which make the run need review rather than be cancelled (ADR 0011).
+    """
+
+
+class RunBusy(MendworkError):
+    """Another process is running or resuming this run, so this one may not touch it."""
+
+
+class UnknownRun(MendworkError):
+    """No run record exists for the run id, or it cannot be read as one."""
+
+
+class ProposalNotPending(MendworkError):
+    """The proposal is not waiting for a decision.
+
+    ``reason`` says why: an unknown proposal, one already decided, one a later proposal replaced,
+    or a run that is not awaiting approval. Nothing was recorded.
+    """
+
+
+class RunNotResumable(MendworkError):
+    """An approval could not resume the run, so nothing was recorded; ``reason`` says why."""
+
+
+class ApprovalStale(MendworkError):
+    """When the run resumed, the page no longer showed the approved element; nothing acted.
+
+    ``stale_reason`` says what no longer matched. A fresh run makes a fresh proposal.
+    """
+
+
 class SecretUnavailable(MendworkError):
     """A secret the workflow declares could not be resolved; it is missing or empty."""
 
@@ -153,6 +188,14 @@ class BrowserUnavailable(InfrastructureError):
 
 class ArtifactStoreUnavailable(InfrastructureError):
     """Run artifacts could not be written."""
+
+
+class AuditLogCorrupt(InfrastructureError):
+    """The audit log cannot be read or written, or its chain of entries is broken.
+
+    No decision is recorded while it is: an approval must never rest on a log that cannot be
+    trusted. ``path`` names the file.
+    """
 
 
 class RecordingUnusable(MendworkError):
@@ -185,6 +228,15 @@ class ModelOutputInvalid(ProviderError):
 
 class PolicyViolation(MendworkError):
     """A safety policy refused the requested operation."""
+
+
+class EgressBlocked(PolicyViolation):
+    """The egress policy refused a navigation or a connection (ADR 0011).
+
+    ``rule`` names why (``scheme``, ``malformed_url``, ``not_allowlisted``, ``blocked_address``),
+    with the host and, for an address, its range; ``blocks`` lists every refusal. It is never
+    retried or healed: the run was pointed somewhere it must not go, and a person should look.
+    """
 
 
 class BudgetExceeded(MendworkError):

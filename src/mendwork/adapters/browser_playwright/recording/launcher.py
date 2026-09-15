@@ -81,6 +81,7 @@ class PlaywrightRecordingLauncher:
                     default_timeout_ms=options.default_timeout_ms,
                     trace_on_failure=False,
                 ),
+                proxy_server=None,
             )
             channel = RecorderChannel(self._inbound)
             try:

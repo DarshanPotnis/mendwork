@@ -13,6 +13,7 @@ from mendwork.engine.ports.browser_types import ElementRef, PlainText
 from mendwork.engine.replay.deadlines import Deadline
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 from tests.fakes.browser import FakeBrowser, FakeElement
+from tests.fakes.egress import navigation_guard
 from tests.fakes.ports import SequenceRandom
 from tests.unit.healing.builders import export_button, step
 from tests.unit.replay.builders import browser, config
@@ -87,6 +88,7 @@ def restorer(page: FakeBrowser, state: RunHealState, replays: Replays) -> StateR
     return StateRestorer(
         browser=page,
         state=state,
+        guard=navigation_guard(),
         config=config(),
         timer=page.timer,
         randomness=SequenceRandom(),

@@ -16,7 +16,7 @@ from mendwork.engine.domain.heals import HealAttemptReport
 from mendwork.engine.domain.model_evidence import ModelChoiceEvidence
 from mendwork.engine.domain.steps import Step, step_target
 from mendwork.engine.errors import TargetNotFound
-from mendwork.engine.healing.candidates import CandidateSignature
+from mendwork.engine.healing.candidates import CandidateSignature, SignatureMatch
 from mendwork.engine.healing.context import ClimbRequest, LadderContext
 from mendwork.engine.healing.ladder import ClimbResult, climb
 from mendwork.engine.healing.model_rung import ModelChoiceConfig, ModelChooser, ModelRung
@@ -147,7 +147,7 @@ async def climb_with(
         excluded=frozenset(),
         deadline=Deadline.after(page.timer, 30_000),
         heal_actions_used=used,
-        reuse=reuse,
+        reuse=SignatureMatch(reuse) if reuse is not None else None,
     )
     return await climb(context, request, not_found())
 

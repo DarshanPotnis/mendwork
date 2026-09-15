@@ -65,26 +65,28 @@ def _base64_cores(raw: bytes) -> set[bytes]:
 
 
 class SecretScrubber:
-    """The secret values one run has resolved, and the means to remove them from its output.
+    """Secret values that were resolved, and the means to remove them from output.
 
-    One instance per run. It only ever grows: a value typed into a page may be reflected
-    in anything captured later in the run.
+    A run has its own, and a process has one more that its log pipeline reads, so a secret any
+    run resolves never reaches a log line. It only ever grows: a value typed into a page may be
+    reflected in anything captured later. Registering replaces its sets rather than changing them,
+    so a reader on another thread, such as a log handler, always sees a whole set.
     """
 
     def __init__(self) -> None:
-        self._text: set[str] = set()
-        self._bytes: set[bytes] = set()
-        self._outbound: set[str] = set()
+        self._text: frozenset[str] = frozenset()
+        self._bytes: frozenset[bytes] = frozenset()
+        self._outbound: frozenset[str] = frozenset()
 
     def register(self, secret: SecretStr) -> None:
         """Remember a resolved secret so later output is scrubbed of it."""
         value = secret.get_secret_value()
         if value:
-            self._text.update(text_variants(value))
-            self._bytes.update(byte_variants(value))
-            self._outbound.update(
+            self._text = self._text | text_variants(value)
+            self._bytes = self._bytes | byte_variants(value)
+            self._outbound = self._outbound | {
                 core.decode("ascii") for core in _base64_cores(value.encode("utf-8"))
-            )
+            }
 
     def scrub_outbound(self, text: str) -> str:
         """Text about to leave the machine, such as a model prompt, with every secret removed.
@@ -92,14 +94,15 @@ class SecretScrubber:
         Beyond ``scrub_text``, a value's base64 forms are deleted too: page text can carry them,
         and whoever receives the text can decode them.
         """
-        cores = sorted(self._outbound, key=len, reverse=True)
-        result = self.scrub_text(text)
+        known, outbound = self._text, self._outbound
+        cores = sorted(outbound, key=len, reverse=True)
+        result = _scrubbed(text, known)
         for _ in range(len(result) + 1):
             if not any(core in result for core in cores):
                 return result
-            result = self.scrub_text(_replace_all(result, cores, ""))
-        everything = sorted(self._text | self._outbound, key=len, reverse=True)
-        while self._occurs(result) or any(core in result for core in cores):
+            result = _scrubbed(_replace_all(result, cores, ""), known)
+        everything = sorted(known | outbound, key=len, reverse=True)
+        while _occurs(result, known) or any(core in result for core in cores):
             result = _replace_all(result, everything, "")
         return result
 
@@ -113,24 +116,8 @@ class SecretScrubber:
         return any(variant in data for variant in self._bytes)
 
     def scrub_text(self, text: str) -> str:
-        """The text with every registered secret removed.
-
-        The replacement never reintroduces a secret: if a secret is a substring of the
-        redaction marker, occurrences are deleted instead, and deletion strictly shortens
-        the text, so the loop always ends.
-        """
-        if not self._occurs(text):
-            return text
-        ordered = sorted(self._text, key=len, reverse=True)
-        replacement = "" if any(variant in REDACTED for variant in ordered) else REDACTED
-        result = _replace_all(text, ordered, replacement)
-        for _ in range(len(text)):
-            if not self._occurs(result):
-                return result
-            result = _replace_all(result, ordered, replacement)
-        while self._occurs(result):
-            result = _replace_all(result, ordered, "")
-        return result
+        """The text with every registered secret removed."""
+        return _scrubbed(text, self._text)
 
     def scrub(self, value: JsonValue) -> JsonValue:
         """A JSON-like value with every string, keys included, scrubbed."""
@@ -142,8 +129,30 @@ class SecretScrubber:
             return [self.scrub(item) for item in value]
         return value
 
-    def _occurs(self, text: str) -> bool:
-        return any(variant in text for variant in self._text)
+
+def _scrubbed(text: str, known: frozenset[str]) -> str:
+    """The text with every known variant removed.
+
+    The replacement never reintroduces a secret: if a secret is a substring of the redaction
+    marker, occurrences are deleted instead, and deletion strictly shortens the text, so the loop
+    always ends.
+    """
+    if not _occurs(text, known):
+        return text
+    ordered = sorted(known, key=len, reverse=True)
+    replacement = "" if any(variant in REDACTED for variant in ordered) else REDACTED
+    result = _replace_all(text, ordered, replacement)
+    for _ in range(len(text)):
+        if not _occurs(result, known):
+            return result
+        result = _replace_all(result, ordered, replacement)
+    while _occurs(result, known):
+        result = _replace_all(result, ordered, "")
+    return result
+
+
+def _occurs(text: str, known: frozenset[str]) -> bool:
+    return any(variant in text for variant in known)
 
 
 def _replace_all(text: str, variants: Iterable[str], replacement: str) -> str:

@@ -10,8 +10,13 @@ from typing import Final
 
 import httpx
 
+from mendwork.adapters.artifacts_local.records import LocalRunRecords
 from mendwork.adapters.artifacts_local.store import LocalArtifactStore
-from mendwork.adapters.browser_playwright.launcher import LaunchOptions, SessionOptions
+from mendwork.adapters.browser_playwright.launcher import (
+    EgressEnforcement,
+    LaunchOptions,
+    SessionOptions,
+)
 from mendwork.adapters.browser_playwright.recording.launcher import RecordingOptions
 from mendwork.adapters.models.breaker import CircuitBreaker
 from mendwork.adapters.models.gemini import GeminiOptions, GeminiWire
@@ -34,11 +39,15 @@ from mendwork.engine.healing.model_rung import ModelChoiceConfig, ModelRung
 from mendwork.engine.ports.browser import BrowserLauncher
 from mendwork.engine.ports.events import EventSink
 from mendwork.engine.ports.model import ModelPort
+from mendwork.engine.ports.resolver import HostResolver
 from mendwork.engine.recording.config import RecordingConfig
 from mendwork.engine.replay.config import ReplayConfig, RetryPolicy
 from mendwork.engine.replay.replayer import Replayer
 from mendwork.engine.safety.budgets import BudgetLimits
+from mendwork.engine.safety.egress import EgressPolicy
 from mendwork.engine.safety.risk import RiskVocabulary
+from mendwork.engine.safety.secret_registry import RegisteringSecretResolver
+from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.settings import Settings
 from mendwork.settings_model import ModelProvider
 
@@ -275,6 +284,15 @@ def wire_format(settings: Settings, name: str) -> WireFormat:
             )
 
 
+def egress_enforcement(settings: Settings, resolver: HostResolver) -> EgressEnforcement:
+    """How each browser session holds its run to the egress policy (ADR 0011).
+
+    A connection's handshake, name lookup, and connect attempts are bounded by the navigation
+    timeout, the longest a page load may take.
+    """
+    return EgressEnforcement(resolver=resolver, timeout_ms=settings.navigation_timeout_ms)
+
+
 def build_replayer(
     settings: Settings,
     *,
@@ -282,19 +300,29 @@ def build_replayer(
     artifacts: LocalArtifactStore,
     events: EventSink,
     environ: Mapping[str, str],
+    egress: EgressPolicy,
+    resolver: HostResolver,
+    scrubber: SecretScrubber,
     model: ModelRung | None = None,
 ) -> Replayer:
-    """A Replayer on the real clock, timer, randomness, and environment secrets."""
+    """A Replayer on the real clock, timer, randomness, and environment secrets.
+
+    Every secret it resolves is registered with ``scrubber``, the process's, so no log line the
+    process writes can carry it (ADR 0011).
+    """
     clock = SystemClock()
     return Replayer(
         launcher=launcher,
         artifacts=artifacts,
+        records=LocalRunRecords(artifacts),
         events=events,
-        secrets=EnvSecretResolver(environ),
+        secrets=RegisteringSecretResolver(EnvSecretResolver(environ), scrubber),
         clock=clock,
         timer=AsyncioTimer(),
         randomness=SystemRandomSource(),
         run_ids=TimestampRunIds(clock),
         config=replay_config(settings),
+        egress=egress,
+        resolver=resolver,
         model=model,
     )

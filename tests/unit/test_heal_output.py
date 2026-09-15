@@ -23,6 +23,7 @@ from mendwork.apps.cli.human_output import (
     failure_lines,
     render_summary,
 )
+from mendwork.engine.domain.approvals import ProposalRecord
 from mendwork.engine.domain.enums import ActionType
 from mendwork.engine.domain.events import (
     HealAttemptedEvent,
@@ -207,17 +208,33 @@ def test_the_guidance_line_is_chosen_by_the_abstention_reason(reason: Abstention
 
 
 def test_approval_and_review_stops_have_their_own_next_steps() -> None:
-    approval = ErrorReport(type="ApprovalRequired", message="m", category=ErrorCategory.STEP)
+    approval = ErrorReport(
+        type="ApprovalRequired",
+        message="m",
+        category=ErrorCategory.STEP,
+        context={"proposal_id": "export-1"},
+    )
+    unnamed = ErrorReport(type="ApprovalRequired", message="m", category=ErrorCategory.STEP)
     review = ErrorReport(type="NeedsReview", message="m", category=ErrorCategory.STEP)
+    stale = ErrorReport(type="ApprovalStale", message="m", category=ErrorCategory.STEP)
+    rejected = ErrorReport(type="ProposalRejected", message="m", category=ErrorCategory.STEP)
 
     assert next_step(approval) == (
-        "Next: this step is irreversible, so its heal needs a person's approval. Review the "
-        "proposal in the run's run.json; approving it with `mendwork approve` arrives with the "
-        "approval flow (Phase 7). Until then, re-record the step if the proposal is right."
+        "Next: this step is irreversible, so proposal export-1 needs a person's approval before "
+        "anything acts on it. Review it with `mendwork show`, then approve or reject it; the "
+        "exact commands follow the summary."
     )
+    assert "so its heal needs a person's approval" in (next_step(unnamed) or "")
     assert next_step(review) == (
         "Next: check in the application what the irreversible action did before running this "
         "workflow again; Mendwork will not retry it."
+    )
+    assert next_step(stale) == (
+        "Next: the page changed after the proposal was approved, so nothing acted on it. Run the "
+        "workflow again; if the step still needs a heal, it makes a fresh proposal."
+    )
+    assert next_step(rejected) == (
+        "Next: re-record this step, or fix the page it runs on, then run the workflow."
     )
 
 
@@ -245,6 +262,9 @@ def test_an_abstention_explains_itself_and_ends_with_the_next_step() -> None:
         ("HealAbstained", "ABSTAINED: why"),
         ("ApprovalRequired", "AWAITING APPROVAL: why"),
         ("NeedsReview", "NEEDS REVIEW: why"),
+        ("EgressBlocked", "BLOCKED BY EGRESS POLICY: why"),
+        ("ApprovalStale", "APPROVAL STALE: why"),
+        ("ProposalRejected", "REJECTED: why"),
         ("CheckpointFailed", "FAILED CheckpointFailed: why"),
     ],
 )
@@ -252,6 +272,42 @@ def test_the_headline_names_how_the_step_stopped(error_type: str, headline: str)
     error = ErrorReport(type=error_type, message="why", category=ErrorCategory.STEP)
 
     assert stop_headline(error) == headline
+
+
+@pytest.mark.parametrize(
+    ("context", "guidance"),
+    [
+        (
+            {"rule": "not_allowlisted", "host": "reports.example.com"},
+            "Next: if this workflow should automate reports.example.com, add it to "
+            "MENDWORK_EGRESS_ALLOWED_DOMAINS; otherwise find out why the run was led there.",
+        ),
+        (
+            {"rule": "blocked_address", "host": "127.0.0.1", "address_range": "loopback"},
+            "Next: runs never reach loopback addresses. If this is a local test target, name its "
+            "exact ip:port in MENDWORK_EGRESS_LOOPBACK_EXCEPTIONS (refused in production).",
+        ),
+        (
+            {"rule": "blocked_address", "host": "intranet.example.com", "address_range": "private"},
+            "Next: intranet.example.com is an internal or metadata address, and no setting lets a "
+            "run reach one. Point the workflow at the site's public address.",
+        ),
+        (
+            {"rule": "scheme", "host": ""},
+            "Next: the run was led to a URL Mendwork never loads (another scheme, embedded "
+            "credentials, or an unreadable address). Fix the navigate step's URL, or find out why "
+            "the page redirected there.",
+        ),
+    ],
+)
+def test_an_egress_refusal_ends_with_guidance_chosen_by_its_rule(
+    context: dict[str, JsonValue], guidance: str
+) -> None:
+    error = ErrorReport(
+        type="EgressBlocked", message="refused", category=ErrorCategory.STEP, context=context
+    )
+
+    assert next_step(error) == guidance
 
 
 def rung0(outcome: RungOutcome, **target: object) -> HealAttemptReport:
@@ -501,7 +557,14 @@ def test_the_summary_shows_healed_abstained_and_stopped_steps() -> None:
         abstained("below_margin"),
     )
     proposal = HealProposal(
-        rung=2, candidate=candidate("c1", LINK, 0.9), margin=0.4, reason="irreversible"
+        id="export-1",
+        step_id=StepId("export"),
+        step_index=0,
+        rung=2,
+        candidate=candidate("c1", LINK, 0.9),
+        identity_signature=("a", "link", "export ledger"),
+        margin=0.4,
+        reason="irreversible",
     )
     approval_error = ErrorReport(
         type="ApprovalRequired", message="needs approval", category=ErrorCategory.STEP
@@ -515,7 +578,10 @@ def test_the_summary_shows_healed_abstained_and_stopped_steps() -> None:
     runs = Path("artifacts/runs")
     healed_summary = render_summary(run_of(RunStatus.SUCCEEDED, healed), runs)
     abstain_summary = render_summary(run_of(RunStatus.FAILED, abstain), runs)
-    waiting_summary = render_summary(run_of(RunStatus.AWAITING_APPROVAL, waiting), runs)
+    paused = run_of(RunStatus.AWAITING_APPROVAL, waiting).model_copy(
+        update={"proposals": (ProposalRecord(proposal=proposal),)}
+    )
+    waiting_summary = render_summary(paused, runs)
     review_summary = render_summary(run_of(RunStatus.NEEDS_REVIEW, review), runs)
 
     assert " 1  export  click   healed r2  -            succeeded  0.12s" in healed_summary
@@ -523,7 +589,13 @@ def test_the_summary_shows_healed_abstained_and_stopped_steps() -> None:
     assert "ABSTAINED at step 1 export: HealAbstained" in abstain_summary
     assert "proposal" in waiting_summary
     assert "AWAITING APPROVAL at step 1 export: ApprovalRequired" in waiting_summary
+    assert waiting_summary.endswith(
+        f"Review:   mendwork show {RUN_ID}\n"
+        f"Approve:  mendwork approve {RUN_ID} export-1\n"
+        f'Reject:   mendwork reject {RUN_ID} export-1 --reason "why"'
+    )
     assert "NEEDS REVIEW at step 1 export: NeedsReview" in review_summary
+    assert "mendwork approve" not in review_summary
 
 
 def test_runs_stopped_for_a_person_exit_4() -> None:

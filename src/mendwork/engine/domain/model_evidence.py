@@ -45,6 +45,17 @@ class ModelUsageTotals(DomainModel):
     """The priced calls' estimated cost; unpriced calls are counted, not guessed."""
     unpriced_calls: int = Field(default=0, ge=0)
 
+    def combined(self, other: "ModelUsageTotals") -> "ModelUsageTotals":
+        """These totals and another execution's, added up."""
+        return ModelUsageTotals(
+            calls=self.calls + other.calls,
+            input_tokens=self.input_tokens + other.input_tokens,
+            output_tokens=self.output_tokens + other.output_tokens,
+            latency_ms=self.latency_ms + other.latency_ms,
+            estimated_cost_usd=self.estimated_cost_usd + other.estimated_cost_usd,
+            unpriced_calls=self.unpriced_calls + other.unpriced_calls,
+        )
+
     def plus(self, usage: ModelUsage) -> "ModelUsageTotals":
         """These totals with one more call."""
         return ModelUsageTotals(

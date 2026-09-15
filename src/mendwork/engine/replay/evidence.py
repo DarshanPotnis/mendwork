@@ -6,6 +6,8 @@ store that cannot write while a step succeeds is different: the run cannot keep 
 record, so that error propagates.
 """
 
+from collections.abc import Collection
+
 import structlog
 
 from mendwork.engine.domain.identifiers import StepId
@@ -26,10 +28,11 @@ from mendwork.engine.ports.browser_types import (
     TraceSaved,
 )
 from mendwork.engine.replay.artifact_names import (
-    TRACE,
+    FIRST_SEGMENT,
     dom_snapshot_name,
     download_name,
     screenshot_name,
+    trace_name,
 )
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 
@@ -46,6 +49,8 @@ class EvidenceRecorder:
         scrubber: SecretScrubber,
         timeout_ms: int,
         log: structlog.stdlib.BoundLogger,
+        segment: int = FIRST_SEGMENT,
+        downloads: Collection[str] = (),
     ) -> None:
         self._browser = browser
         self._artifacts = artifacts
@@ -53,9 +58,11 @@ class EvidenceRecorder:
         self._scrubber = scrubber
         self._timeout_ms = timeout_ms
         self._log = log
+        self._segment = segment
         self._masks: list[Selector] = []
         self._secret_typed_at: tuple[int, StepId] | None = None
-        self._downloads: set[str] = set()
+        self._downloads: set[str] = set(downloads)
+        """Downloads kept so far, earlier segments' included, so none is replaced."""
 
     def secret_typed(self, index: int, step_id: StepId, selector: Selector | None) -> None:
         """Note that a step typed a secret into the field this selector finds.
@@ -75,7 +82,8 @@ class EvidenceRecorder:
             data = await self._browser.screenshot(
                 mask=tuple(self._masks), timeout_ms=self._timeout_ms
             )
-            return await self._artifacts.write(self._run_id, screenshot_name(index, step_id), data)
+            name = screenshot_name(index, step_id, self._segment)
+            return await self._artifacts.write(self._run_id, name, data)
         except ArtifactStoreUnavailable as error:
             if fatal:
                 raise
@@ -91,7 +99,9 @@ class EvidenceRecorder:
         try:
             html = self._scrubber.scrub_text(await self._browser.dom_snapshot())
             return await self._artifacts.write(
-                self._run_id, dom_snapshot_name(index, step_id), html.encode("utf-8")
+                self._run_id,
+                dom_snapshot_name(index, step_id, self._segment),
+                html.encode("utf-8"),
             )
         except MendworkError as error:
             self._note(problems, "dom snapshot", error)
@@ -103,7 +113,8 @@ class EvidenceRecorder:
             export = await self._browser.export_trace(scrubber=self._scrubber)
             match export:
                 case TraceSaved():
-                    return await self._artifacts.adopt(self._run_id, TRACE, export.path), None
+                    name = trace_name(self._segment)
+                    return await self._artifacts.adopt(self._run_id, name, export.path), None
                 case TraceNotSaved():
                     return None, self._withheld(export.reason)
                 case TraceDisabled():

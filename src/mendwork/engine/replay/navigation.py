@@ -1,4 +1,4 @@
-"""Navigate steps: load a URL, retrying only transient failures."""
+"""Navigate steps: check the egress policy, load a URL, and retry only transient failures."""
 
 import structlog
 
@@ -9,6 +9,7 @@ from mendwork.engine.ports.randomness import RandomSource
 from mendwork.engine.ports.timer import Timer
 from mendwork.engine.replay.config import RetryPolicy
 from mendwork.engine.replay.deadlines import Deadline
+from mendwork.engine.replay.navigation_guard import NavigationGuard
 from mendwork.engine.replay.retry import HTTP_STATUS_REASON, backoff_delay_ms, is_transient
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 
@@ -19,6 +20,7 @@ async def navigate_with_retry(
     browser: BrowserPort,
     url: str,
     *,
+    guard: NavigationGuard | None,
     policy: RetryPolicy,
     navigation_timeout_ms: int,
     deadline: Deadline,
@@ -29,12 +31,17 @@ async def navigate_with_retry(
 ) -> NavigationReport:
     """Load a URL. A final main-document status of 400 or more fails the step.
 
-    Transient failures (timeouts, dropped connections, 502/503/504) are retried with
-    backoff up to the policy's attempts, and never past the run's deadline.
+    With a guard, the URL is checked against the run's egress policy before every attempt, and
+    a refusal (EgressBlocked) is never retried. Only the recorder passes no guard: a person drives
+    its browser, and the recording's verification replay is held to the policy. Transient
+    failures (timeouts, dropped connections, 502/503/504) are retried with backoff up to the
+    policy's attempts, and never past the run's deadline.
     """
     attempt = 1
     while True:
         try:
+            if guard is not None:
+                await guard.check(url, timeout_ms=deadline.cap(navigation_timeout_ms))
             outcome = await browser.navigate(url, timeout_ms=deadline.cap(navigation_timeout_ms))
             if outcome.status is not None and outcome.status >= _FIRST_ERROR_STATUS:
                 raise NavigationError(

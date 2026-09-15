@@ -108,6 +108,14 @@ def stop_headline(error: ErrorReport) -> str:
             return f"AWAITING APPROVAL: {error.message}"
         case "NeedsReview":
             return f"NEEDS REVIEW: {error.message}"
+        case "EgressBlocked":
+            return f"BLOCKED BY EGRESS POLICY: {error.message}"
+        case "RunCancelled":
+            return f"INTERRUPTED: {error.message}"
+        case "ApprovalStale":
+            return f"APPROVAL STALE: {error.message}"
+        case "ProposalRejected":
+            return f"REJECTED: {error.message}"
         case _:
             return f"FAILED {error.type}: {error.message}"
 
@@ -117,12 +125,20 @@ def next_step(error: ErrorReport) -> str | None:
     context = error.context
     match error.type:
         case "ApprovalRequired":
+            proposal = context.get("proposal_id")
+            named = f"proposal {proposal}" if isinstance(proposal, str) else "its heal"
             return (
-                "Next: this step is irreversible, so its heal needs a person's approval. Review "
-                "the proposal in the run's run.json; approving it with `mendwork approve` arrives "
-                "with the approval flow (Phase 7). Until then, re-record the step if the proposal "
-                "is right."
+                f"Next: this step is irreversible, so {named} needs a person's approval before "
+                "anything acts on it. Review it with `mendwork show`, then approve or reject it; "
+                "the exact commands follow the summary."
             )
+        case "ApprovalStale":
+            return (
+                "Next: the page changed after the proposal was approved, so nothing acted on it. "
+                "Run the workflow again; if the step still needs a heal, it makes a fresh proposal."
+            )
+        case "ProposalRejected":
+            return "Next: re-record this step, or fix the page it runs on, then run the workflow."
         case "NeedsReview":
             return (
                 "Next: check in the application what the irreversible action did before running "
@@ -130,8 +146,50 @@ def next_step(error: ErrorReport) -> str | None:
             )
         case "HealAbstained":
             return _abstention_step(str(context.get("reason")), context)
+        case "EgressBlocked":
+            return egress_next_step(context)
+        case "RunCancelled":
+            return _interrupted_step(context)
         case _:
             return None
+
+
+def _interrupted_step(context: Mapping[str, JsonValue]) -> str:
+    steps = context.get("irreversible_steps")
+    if isinstance(steps, list) and steps:
+        named = ", ".join(str(step) for step in steps)
+        return (
+            f"Next: check in the application what step {named} did before running this workflow "
+            "again; Mendwork never re-runs a run that needs review."
+        )
+    return "Next: nothing irreversible was sent; run the workflow again when you are ready."
+
+
+def egress_next_step(context: Mapping[str, JsonValue]) -> str:
+    """What to do after the egress policy refused a navigation or a connection, by its rule."""
+    host = context.get("host") or "that destination"
+    match context.get("rule"):
+        case "not_allowlisted":
+            return (
+                f"Next: if this workflow should automate {host}, add it to "
+                "MENDWORK_EGRESS_ALLOWED_DOMAINS; otherwise find out why the run was led there."
+            )
+        case "blocked_address" if context.get("address_range") == "loopback":
+            return (
+                "Next: runs never reach loopback addresses. If this is a local test target, name "
+                "its exact ip:port in MENDWORK_EGRESS_LOOPBACK_EXCEPTIONS (refused in production)."
+            )
+        case "blocked_address":
+            return (
+                f"Next: {host} is an internal or metadata address, and no setting lets a run reach "
+                "one. Point the workflow at the site's public address."
+            )
+        case _:
+            return (
+                "Next: the run was led to a URL Mendwork never loads (another scheme, embedded "
+                "credentials, or an unreadable address). Fix the navigate step's URL, or find out "
+                "why the page redirected there."
+            )
 
 
 def _abstention_step(reason: str, context: Mapping[str, JsonValue]) -> str:

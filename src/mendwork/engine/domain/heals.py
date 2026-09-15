@@ -8,7 +8,7 @@ also keeps what it showed the model and what the model answered.
 """
 
 from enum import StrEnum
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import Field
 
@@ -204,12 +204,39 @@ class RecoveryReport(DomainModel):
     """Why the state could not be restored."""
 
 
+PROPOSAL_ID_PATTERN: Final = r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*-[1-9][0-9]*$"
+"""``<step id>-<n>``: the step a proposal is for, and how many proposals the run had made."""
+
+
+class ProposalBox(DomainModel):
+    """Where a proposed element sat, as fractions of the document.
+
+    Evidence for the person deciding, never part of what an approval must match: a cookie banner,
+    a viewport change, or platform fonts move an element without changing what it is (ADR 0011).
+    """
+
+    x: float
+    y: float
+    width: float
+    height: float
+
+
 class HealProposal(DomainModel):
     """A heal found for a step that may not act without a person's approval."""
 
+    id: str = Field(pattern=PROPOSAL_ID_PATTERN)
+    """Unique within the run; a proposal a later one replaced is never pending again."""
+    step_id: StepIdField
+    step_index: int = Field(ge=0)
     rung: HealedRung
     candidate: ScoredCandidate
+    identity_signature: tuple[str, ...]
+    """What the approved element must still be when the run resumes: tag, role, normalized name,
+    type, id, name, test id, href, structural path, and nearby text, scrubbed of secrets."""
+    box: ProposalBox | None = None
     margin: Score | None = None
+    threshold: Score | None = None
+    required_margin: Score | None = None
     reason: str
     model: ModelChoiceEvidence | None = None
     """For a Rung 3 proposal, what the model was shown and answered."""

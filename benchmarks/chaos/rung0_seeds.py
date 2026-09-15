@@ -35,6 +35,7 @@ from benchmarks.chaos.workflow_targets import load_workflow_targets
 from mendwork.adapters.workflow_yaml.codec import WorkflowYamlCodec
 from mendwork.engine.domain.runs import Run, RunStatus, StepStatus
 from mendwork.engine.domain.workflow import WorkflowVersion
+from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.observability import configure_logging
 from mendwork.settings import Settings
 
@@ -223,7 +224,7 @@ async def _sign_in(page: Page, portal: str) -> None:
 async def survey(portal: str, level: int, seeds: range, out: TextIO) -> list[SeedOutcome]:
     """Replay every seed with ground truth and report each one as it finishes."""
     settings = Settings()
-    configure_logging(settings)
+    configure_logging(settings, SecretScrubber())
     content = await asyncio.to_thread(WORKFLOW_PATH.read_bytes)
     workflow: WorkflowVersion = WorkflowYamlCodec(max_bytes=settings.workflow_max_bytes).decode(
         content, source=str(WORKFLOW_PATH)

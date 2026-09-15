@@ -31,9 +31,11 @@ from mendwork.engine.replay.values import ValueResolver
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 from tests.fakes.browser import FakeBrowser, FakeLauncher
 from tests.fakes.clock import FakeClock
+from tests.fakes.egress import TEST_POLICY, FakeResolver, navigation_guard
 from tests.fakes.ports import (
     DictSecretResolver,
     InMemoryArtifactStore,
+    InMemoryRunRecords,
     RecordingEventSink,
     SequenceRandom,
     SequentialRunIds,
@@ -104,6 +106,9 @@ async def replay(
         randomness=SequenceRandom([0.0]),
         run_ids=SequentialRunIds(),
         config=config(**overrides),
+        egress=TEST_POLICY,
+        resolver=FakeResolver(),
+        records=InMemoryRunRecords(),
     )
     workflow: WorkflowVersion = version(steps=list(steps))
     return await replayer.run(workflow, {}), events
@@ -483,6 +488,10 @@ async def test_a_page_that_never_settles_is_not_healed() -> None:
     assert stopped.heal is None
 
 
+async def no_journal(index: int, target: Step) -> None:
+    """These tests keep no run record, so an irreversible dispatch has nowhere to be journaled."""
+
+
 def healer_for(
     page: FakeBrowser, target: Step, **kwargs: object
 ) -> tuple[StepHealer, RunHealState]:
@@ -495,9 +504,12 @@ def healer_for(
     run_deadline = Deadline.after(timer, replay_config.run_timeout_ms)
     state = RunHealState()
     state.started(StepStart(0, target, "doc-0", page.url))
+    guard = navigation_guard()
     actions = StepActions(
         browser=page,
         emitter=emitter,
+        guard=guard,
+        on_irreversible=no_journal,
         values=ValueResolver({}, DictSecretResolver({}), scrubber),
         evidence=EvidenceRecorder(
             browser=page,
@@ -526,6 +538,7 @@ def healer_for(
         restorer=StateRestorer(
             browser=page,
             state=state,
+            guard=guard,
             config=replay_config,
             timer=timer,
             randomness=SequenceRandom(),

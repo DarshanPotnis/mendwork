@@ -1,6 +1,6 @@
 """What one run remembers for healing: where each step started, and each step's verified heal.
 
-Created for each run and handed to the step runner, never shared between runs.
+Created for each execution and handed to the step runner, never shared between runs.
 
 - **Starts** record the document and URL each step began on. The steps that began on the
   same document as a failed step are the segment a restore replays: re-opening the first
@@ -8,16 +8,21 @@ Created for each run and handed to the step runner, never shared between runs.
 - **Heal actions** count how many healed targets each step acted on, for the attempt limits.
 - **Verified heals** remember the signature of each step's proven heal and the rung that found
   it, so a restore can replay that step without it counting as a new heal attempt, and a
-  Rung 3 heal without asking a model again.
+  Rung 3 heal without asking a model again. A resume seeds them from the record, matched by
+  identity rather than position, because the page is rebuilt in a new browser.
+- **Proposals** are numbered across the whole run, a resume's included, so every proposal id is
+  unique.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from types import MappingProxyType
 
 from mendwork.engine.domain.heals import HealedRung
 from mendwork.engine.domain.identifiers import StepId
 from mendwork.engine.domain.steps import Step
-from mendwork.engine.healing.candidates import CandidateSignature
+from mendwork.engine.healing.candidates import CandidateSignature, SignatureMatch
+from mendwork.engine.safety.secret_scrub import SecretScrubber
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +41,13 @@ class VerifiedHeal:
 
     signature: CandidateSignature
     rung: HealedRung
+    by_identity: bool = False
+    """True for a heal an earlier execution proved: its signature is a scrubbed identity, with no
+    position, because the page is rebuilt in another browser."""
+
+    def match(self, scrubber: SecretScrubber) -> SignatureMatch:
+        """How to find the element again."""
+        return SignatureMatch(self.signature, by_identity=scrubber if self.by_identity else None)
 
 
 class RunHealState:
@@ -45,6 +57,7 @@ class RunHealState:
         self._starts: dict[int, StepStart] = {}
         self._heal_actions: dict[StepId, int] = {}
         self._verified: dict[StepId, VerifiedHeal] = {}
+        self._proposals = 0
 
     def started(self, start: StepStart) -> None:
         """Record the page a step began on."""
@@ -75,8 +88,29 @@ class RunHealState:
         """The step's verified heal, if it has one."""
         return self._verified.get(step_id)
 
+    def verified_heals(self) -> Mapping[StepId, VerifiedHeal]:
+        """Every verified heal so far."""
+        return MappingProxyType(self._verified)
+
     def remember_verified(
         self, step_id: StepId, signature: CandidateSignature, rung: HealedRung
     ) -> None:
         """The step's heal passed its checkpoints."""
         self._verified[step_id] = VerifiedHeal(signature, rung)
+
+    def seed_verified(self, step_id: StepId, heal: VerifiedHeal) -> None:
+        """A verified heal an earlier execution of the run proved."""
+        self._verified[step_id] = heal
+
+    @property
+    def proposals_made(self) -> int:
+        """How many proposals the run has made, earlier executions included."""
+        return self._proposals
+
+    def seed_proposals(self, count: int) -> None:
+        """How many proposals earlier executions of the run made."""
+        self._proposals = count
+
+    def count_proposal(self) -> None:
+        """The run made a proposal."""
+        self._proposals += 1

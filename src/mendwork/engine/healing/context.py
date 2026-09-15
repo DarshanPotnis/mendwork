@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from mendwork.engine.domain.fingerprint import Fingerprint
 from mendwork.engine.domain.heals import HealAttemptReport, HealedRung, ScoredCandidate
 from mendwork.engine.domain.steps import Step
-from mendwork.engine.healing.candidates import CandidateSignature
+from mendwork.engine.healing.candidates import CandidateSignature, SignatureMatch
 from mendwork.engine.healing.config import HealingConfig
 from mendwork.engine.healing.model_rung import ModelChooser
 from mendwork.engine.healing.scoring import ScoredElement
@@ -36,13 +36,17 @@ class ClimbRequest:
     step: Step
     fingerprint: Fingerprint
     attempt: int
-    excluded: frozenset[tuple[str, ...]]
+    excluded: frozenset[CandidateSignature]
     """Signatures of candidates that already failed verification in this step."""
     deadline: Deadline
     heal_actions_used: int = 0
     """Healed targets the step already acted on, for the gates checked before asking a model."""
-    reuse: CandidateSignature | None = None
-    """While a page is restored: the step's verified Rung 3 heal, found again without a model."""
+    reuse: SignatureMatch | None = None
+    """A Rung 3 heal to find again without a model: while a page is restored, or a proposal's
+    element when an approved run resumes."""
+    ask_model: bool = True
+    """False when an approved run resumes: an approval names an element, and a model's new pick
+    could only be a different one."""
 
 
 @dataclass(frozen=True, slots=True)

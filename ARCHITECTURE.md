@@ -106,16 +106,19 @@ mendwork/
 │   │   ├── domain/               # pure models: workflow, step, selector, fingerprint, checkpoint, lineage
 │   │   ├── ports/                # typing.Protocol interfaces, added by the phase that first uses each
 │   │   ├── recording/
-│   │   ├── replay/
+│   │   ├── replay/               # replayer, run execution, journal, navigation guard, step runner;
+│   │   │                         #   approval records, decisions (ApprovalDesk), resume
 │   │   ├── healing/              # candidates, features, scoring, acceptance, alternates, checks,
 │   │   │                         #   rung1, rung2, ladder, gates, recovery, run state, explain;
 │   │   │                         #   rung3, prompt, choice parsing, eligibility, model rung
 │   │   ├── verification/
-│   │   ├── safety/               # risk, approvals, egress, budgets, redaction
+│   │   ├── safety/               # risk, approvals, egress (rules, addresses, blocks), interruption,
+│   │   │                         #   budgets, redaction, secret scrubbing and registration
 │   │   ├── patching/
 │   │   └── errors.py
 │   ├── adapters/
 │   │   ├── browser_playwright/   # BrowserPort: launcher, session, Rung 0 primitives, tracing
+│   │   │   ├── egress/           # SOCKS5 gateway, DevTools document filter, egress log (ADR 0011)
 │   │   │   ├── recording/        # RecordingBrowser: recorder channel, messages, navigation log, sessions
 │   │   │   └── js/               # page scripts: page state, element identity and keys, field value,
 │   │   │                         #   the recorder and its element facts, candidate extraction
@@ -126,12 +129,15 @@ mendwork/
 │   │   ├── workflow_yaml/        # strict YAML decoding with line numbers, deterministic encoding
 │   │   ├── storage_fs/           # WorkflowStore on files: one directory per workflow, no-overwrite publish
 │   │   ├── storage_postgres/     # Phase 10
-│   │   ├── artifacts_local/      # ArtifactStore: artifacts/runs/<run_id>/, atomic writes
+│   │   ├── artifacts_local/      # ArtifactStore: artifacts/runs/<run_id>/, atomic ordered writes;
+│   │   │                         #   RunRecords: per-run flock claims, records read back
+│   │   ├── audit_fs/             # AuditLog: artifacts/audit/audit.jsonl, hash-chained, fsynced
 │   │   ├── events_jsonl/         # EventSink as JSON lines
 │   │   ├── secrets_env/          # SecretResolver: MENDWORK_SECRET_<NAME>
-│   │   └── system/               # Clock, Timer, RandomSource, RunIdGenerator on the real system
+│   │   └── system/               # Clock, Timer, RandomSource, RunIdGenerator, HostResolver
 │   ├── apps/
-│   │   ├── cli/                  # Typer: validate, schema, record, run, approve, history, diff, rollback, bench
+│   │   ├── cli/                  # Typer: validate, schema, record, run, show, approve, reject;
+│   │   │                         #   later history, diff, rollback, bench
 │   │   ├── api/                  # Phase 10: FastAPI
 │   │   ├── portal/               # chaos portal server, shared by `make portal` and browser tests
 │   │   └── worker/               # Phase 10
@@ -326,9 +332,10 @@ class HealReport(BaseModel):            # on StepResult
 
 ### Runs and events
 
-- **`Run`** (saved as `run.json`) records the workflow version, status, bound inputs (secrets by name only), one `StepResult` per step, the run's error, and its model usage totals (calls, tokens, latency, estimated cost, unpriced calls; `run_finished` carries them too). A `StepResult` carries its Rung 0 evidence (every selector's per-level counts and outcome, the winning rank, the identity, or the rung that healed it), navigation report, whether the action reached the page, checkpoint results, error, artifact names, and its `HealReport` when the ladder ran. Steps after the one the run stopped at are `not_run`.
-- **Stopping statuses.** A step fails, or stops for a person: `awaiting_approval` (a heal for an irreversible step) or `needs_review` (an irreversible action on a heal that failed verification). The run takes the same status; both exit 4.
-- **Events** are a discriminated union on `type`, each with `event_version`, `run_id`, a gap-free `sequence` from 1, and a Clock timestamp: `run_started`, `step_started`, `target_resolved`, `heal_attempted` (per rung, when it decides), `action_performed` (value kind, never the value), `checkpoint_passed`, `checkpoint_failed`, `heal_verified` (after the checkpoints), `state_restored`, `step_succeeded`, `step_failed` (with the stopping status), `run_finished`.
+- **`Run`** (saved as `run.json`) records the workflow version, status, bound inputs (secrets by name only), one `StepResult` per step, the run's error, and its model usage totals (calls, tokens, latency, estimated cost, unpriced calls; `run_finished` carries them too). A `StepResult` carries its Rung 0 evidence (every selector's per-level counts and outcome, the winning rank, the identity, or the rung that healed it), navigation report, whether the action reached the page (and, for an interrupted step, whether that is unknown), checkpoint results, error, artifact names, and its `HealReport` when the ladder ran. Steps after the one the run stopped at are `not_run`.
+- **Record version 2** (Phase 7, ADR 0011) adds what approvals and interrupts need: the SHA-256 of `workflow.json`, the exact version the run executes, saved beside the record; one `RunSegment` per execution (the first run, then each resume) with the egress policy it was held to; every irreversible dispatch, recorded before it was sent; every `ProposalRecord` (the proposal, the decision and its audit entry, and what came of it); the `ResumeState` a resume needs; the step results a decision replaced; and the last event sequence, so a resume's events continue without a gap. Version 1 records are still read, but cannot be approved or resumed.
+- **Stopping statuses.** A step fails, or stops for a person: `awaiting_approval` (a heal for an irreversible step) or `needs_review` (an irreversible action on a heal that failed verification, or a run interrupted after dispatching an irreversible action). The run takes the same status; both exit 4. A run interrupted before any irreversible dispatch is `cancelled` and exits 130.
+- **Events** are a discriminated union on `type`, each with `event_version`, `run_id`, a gap-free `sequence` from 1, and a Clock timestamp: `run_started`, `run_resumed` (an approval resumed the run), `step_started`, `target_resolved`, `heal_attempted` (per rung, when it decides), `action_performed` (value kind, never the value), `checkpoint_passed`, `checkpoint_failed`, `heal_verified` (after the checkpoints), `state_restored`, `step_succeeded`, `step_failed` (with the stopping status), `run_finished`.
 - **Errors** carry a category: `step`, or `infrastructure` for `InfrastructureError` and anything unexpected.
 
 ### Versions
@@ -336,7 +343,7 @@ class HealReport(BaseModel):            # on StepResult
 - **Lineage.** Version 1 has no parent and no change record. Each later version is its parent's number + 1 and records a `ChangeRecord`. A rollback restores at most version − 2.
 - **Deriving children.** Children come only from pure functions, one per change kind: `edit_version` and `roll_back_version`, plus a heal function in Phase 8. They never mutate the parent, keep every step id in order, and take `created_at` from the `Clock` port.
 
-**Run states:** `QUEUED → RUNNING → SUCCEEDED | FAILED | CANCELLED | AWAITING_APPROVAL | NEEDS_REVIEW`
+**Run states:** `QUEUED → RUNNING → SUCCEEDED | FAILED | CANCELLED | AWAITING_APPROVAL | NEEDS_REVIEW`; `AWAITING_APPROVAL → RUNNING` when a proposal is approved (the run resumes), `→ FAILED` when it is rejected, and `→ CANCELLED` when an approval is recorded but the run stops before it resumes.
 
 **Error hierarchy** (`engine/errors.py`):
 - `MendworkError`
@@ -351,10 +358,17 @@ class HealReport(BaseModel):            # on StepResult
   - `CheckpointFailed`
   - `NavigationError`
   - `RunTimedOut`
+  - `RunCancelled`: an interrupt stopped the run (recorded as the error of a cancelled or interrupted run)
+  - `RunBusy`: another process holds the run
+  - `UnknownRun`: no readable record exists for the run id
+  - `ProposalNotPending`: the proposal is unknown, already decided, or its run no longer awaits approval
+  - `RunNotResumable`: an approval could not resume the run, so nothing was recorded
+  - `ApprovalStale`: the resumed page no longer shows the approved element; nothing acted
   - `SecretUnavailable`
   - `ProviderError`
     - `ModelOutputInvalid`: the model replied, but not as exactly one choice
   - `PolicyViolation`
+    - `EgressBlocked`: the egress policy refused a navigation, a document, or a connection
   - `BudgetExceeded`
   - `VersionConflict`: a version number is taken, or its parent is missing
   - `WorkflowValidationError`, which carries every `ValidationIssue` (path, message, line, column, step id)
@@ -364,8 +378,9 @@ class HealReport(BaseModel):            # on StepResult
   - `InfrastructureError`
     - `BrowserUnavailable`
     - `ArtifactStoreUnavailable`
+    - `AuditLogCorrupt`: the audit log cannot be read or written, or its chain is broken
 
-**Ports so far:** `Clock`, `WorkflowStore`, and from Phase 3 `BrowserLauncher`/`BrowserPort`, `ArtifactStore`, `EventSink`, `SecretResolver`, and the small ports that keep the engine deterministic: `Timer` (monotonic time and backoff pauses), `RandomSource` (jitter), and `RunIdGenerator`. From Phase 4, recording adds `RecordingLauncher`/`RecordingBrowser` (a BrowserPort plus page events, element facts, and the hold-back handshake), `RecordingObserver`, and `StopSignal`. From Phase 6, `ModelPort` (a numbered choice in, a choice or null out) and `UsageLedger` (each UTC day's model-call count). A store instance is bound to one tenant when it is constructed, so its methods take no workspace. From Phase 5, `BrowserPort` also reads `element_facts` (moved up from the recording port) and `scan_candidates` for healing. Port data are plain models; no Playwright type crosses a port.
+**Ports so far:** `Clock`, `WorkflowStore`, and from Phase 3 `BrowserLauncher`/`BrowserPort`, `ArtifactStore`, `EventSink`, `SecretResolver`, and the small ports that keep the engine deterministic: `Timer` (monotonic time and backoff pauses), `RandomSource` (jitter), and `RunIdGenerator`. From Phase 4, recording adds `RecordingLauncher`/`RecordingBrowser` (a BrowserPort plus page events, element facts, and the hold-back handshake), `RecordingObserver`, and `StopSignal`. From Phase 6, `ModelPort` (a numbered choice in, a choice or null out) and `UsageLedger` (each UTC day's model-call count). From Phase 7, `HostResolver` (a host name's addresses, for the egress policy), `RunRecords` (claiming a run for one process, and reading its record and workflow snapshot back), and `AuditLog` (append-only, chained decisions); `BrowserLauncher.session` takes the run's `EgressPolicy`, and `BrowserPort.take_egress_blocks` reports what the browser-side layers refused. A store instance is bound to one tenant when it is constructed, so its methods take no workspace. From Phase 5, `BrowserPort` also reads `element_facts` (moved up from the recording port) and `scan_candidates` for healing. Port data are plain models; no Playwright type crosses a port.
 
 ---
 
@@ -406,18 +421,24 @@ class HealReport(BaseModel):            # on StepResult
 ### Running
 
 1. **Preflight**, which creates nothing: load the `WorkflowVersion`, bind run inputs (required, defaults, unknown names), and check that every declared secret can be resolved. Secret values are resolved only in memory, at the moment of use.
-2. Check the start URL against the workspace's egress policy (Phase 7).
-3. Create the run id, write `run.json` as `running`, emit `run_started`, and open one isolated browser session.
+2. Check every navigate URL known up front (literals and bound inputs) against the egress policy (§8, ADR 0011).
+3. Create the run id, claim the run for this process, save `workflow.json` and its digest, write `run.json` as `running`, emit `run_started`, and open one isolated browser session held to the egress policy.
 4. For each step:
    1. Emit `step_started`.
    2. Resolve the target through the heal ladder, starting at Rung 0 (§7): settle, evaluate every selector, check stability, consensus, identity.
-   3. If the target was healed and the step is `IRREVERSIBLE`, pause the run as `AWAITING_APPROVAL` with the evidence attached.
+   3. If the target was healed and the step is `IRREVERSIBLE`, pause the run as `AWAITING_APPROVAL` with a pending proposal: the element, every number the decision used, its position (shown, never matched), and a screenshot.
    4. Run pre-action checks on the pinned element: attached, same identity, visible, enabled or editable, compatible with the action.
    5. Watch for the events the step's `download_completed` and `response_received` checkpoints observe.
    6. Perform the action on the pinned element, then let the page settle again.
    7. Evaluate every checkpoint (§8); a new tab or window fails the step.
    8. **Pass:** record the `StepResult` and a screenshot, plus a `ChangeRecord` if the step was healed (Phase 8). **Fail:** a SAFE or CAUTION heal that failed verification is recovered (§8) within its attempt limit; otherwise record screenshot, DOM snapshot, and trace (unless it could hold a secret) and stop the run.
 5. Finish: set the final status, total model usage and estimated cost, write `run.json`, emit `run_finished`, and apply the patch promotion policy (§9).
+
+**The journal.** `run.json` is rewritten atomically when the run starts, after every step, just before an irreversible action is dispatched, and when the run finishes, so a record left by a process that stopped still says which steps finished and whether an irreversible action may have been sent (ADR 0011).
+
+**Interrupts.** A first Ctrl+C (or SIGTERM) stops the step in progress where it is, records it without touching the browser again, and ends the run `cancelled`, or `needs_review` if an irreversible action was dispatched; neither is ever re-run automatically. A second aborts at once, finishing the record from the journal on disk. `mendwork show` completes a record whose process ended without either.
+
+**Approval and resume.** `mendwork show` lists a run's proposals with their evidence; `mendwork approve` and `mendwork reject` decide one. The decision is appended to the audit log before the record is written, and neither write is cut short by an interrupt. A rejection ends the run `failed`. An approval resumes it at once in a new browser: the steps before the approved one are replayed quietly to rebuild its page, then the step runs from Rung 0. If the recorded element is found, the heal was not needed; otherwise the ladder runs without a model and may act only on the approved element, matched on what it is and not where it sits. Anything else fails the step with `ApprovalStale` and nothing acts. A run cannot resume past an earlier irreversible step, from a changed `workflow.json`, or with an input that held a secret's value.
 
 Transient retries are **separate from healing**. Only a navigate step's page load is retried, for timeouts, dropped connections, and 502/503/504, with bounded exponential backoff and jitter. Actions and resolution are never retried. Every wait is bounded by the step, checkpoint, navigation, and run timeouts from Settings. Details: ADR 0007.
 
@@ -584,10 +605,15 @@ Risk is classified **by consequence**, not by mechanism:
 
 ### Egress policy (SSRF protection)
 
-- Per-workspace allowlist of domains for top-level navigation.
-- Block non-http(s) schemes.
-- Resolve hostnames and block loopback, private, link-local, and cloud-metadata IP ranges, so the bot can never be pointed at internal networks.
-- Enforced both as a pre-navigation check and through Playwright request routing.
+- **Deny by default.** A per-workspace allowlist of host names for top-level navigation: exact names, or `*.example.com` for any subdomain. An empty allowlist allows no navigation.
+- **Schemes and URLs.** Only `http` and `https` load, in every frame; a URL a browser could read differently from Mendwork (credentials in it, a malformed host, an out-of-range port) is refused.
+- **Addresses.** Loopback, private (RFC 1918 and IPv6 ULA), shared (100.64.0.0/10), link-local, multicast, unspecified, every other non-global range, and named cloud-metadata endpoints (including the publicly routable Azure WireServer) are refused, in IPv4 and IPv6, with IPv4 carried inside IPv6 (mapped, compatible, 6to4, Teredo, NAT64) checked as itself and numeric host forms read as a browser reads them.
+- **Three layers, because Playwright routing cannot see redirect hops** (measured; ADR 0011):
+  - the engine checks every navigate URL before the browser is asked, and every URL known up front before the run starts;
+  - a DevTools `Fetch` filter pauses every document request in the run's page, each redirect hop included, and fails any the scheme, URL, address, or (for the page itself, not frames) allowlist rules refuse;
+  - a per-session SOCKS5 gateway carries every connection of the run's browser context (subresources, WebSockets, frames, popups): it resolves a name once, refuses any internal or metadata address, and connects only to the addresses it checked, so DNS rebinding between the check and the connection is impossible. Service workers are blocked, and WebRTC may not send UDP outside the proxy.
+- **Local test targets.** Exact loopback `ip:port` origins may be exempted for the chaos portal and fixture sites; Settings refuses any in production.
+- Every refusal fails the step with `EgressBlocked`, names its rule, host, and layer, and is never retried or healed. The recorder is not held to the policy: a person drives that browser.
 
 ### Secrets
 
@@ -595,9 +621,10 @@ Risk is classified **by consequence**, not by mechanism:
 - A `SecretResolver` port supplies values at the moment of use. The environment adapter reads `MENDWORK_SECRET_<UPPER_SNAKE_NAME>`, a namespace Settings reserves (ADR 0003); `.env` never supplies secrets.
 - Each run scrubs resolved values, in raw and escaped forms, from all outside text entering its records: errors, identities, checkpoint details, URLs, and DOM snapshots.
 - **Traces** pause before a secret is typed, resume only on a different document, are withheld when a failure happens on the secret's document, and are scanned for every secret encoding before being kept. **Screenshots** mask password fields and fields filled from secrets.
-- Tested end to end: a distinctive secret is searched for in stdout, stderr, events, `run.json`, DOM snapshots, and every trace member (ADR 0007).
+- Tested end to end: a distinctive secret is searched for in stdout, stderr, events, `run.json`, DOM snapshots, and every trace member (ADR 0007), and, through a pause, `show`, `approve`, and a `reject` whose reason contains the secret, in the audit log, `workflow.json`, the resumed segment's trace, and every command's output (ADR 0011).
 - **Model prompts** are built only from scrubbed text, with a secret's base64 forms removed as well; a test runs a heal through every provider adapter and searches each request body for every encoding (ADR 0010).
-- A structlog redaction processor wired to the `SecretResolver` extends the same guarantee to every log line (Phase 7).
+- **Logs.** Values under sensitive field names are redacted before rendering. Every command also wraps its `SecretResolver` so each value is registered, at the moment it is resolved, with the process's scrubber, and the log pipeline scrubs every rendered line, tracebacks included, of those values in every covered encoding (ADR 0011).
+- **Decisions.** A rejection's reason is scrubbed of the run's secrets before it reaches the audit log or the record.
 
 ### Explicit non-goals
 
@@ -657,7 +684,7 @@ class ModelPort(Protocol):
   - stored as prefix + SHA-256 hash
   - scoped, revocable, with `last_used_at` tracked
 - **Secrets and saved browser sessions:** encrypted with `MultiFernet`, master keys from environment, key rotation supported.
-- **Audit events** (append-only) record key creation, approvals, policy changes, rollbacks, and risk downgrades.
+- **Audit events** (append-only) record key creation, approvals, policy changes, rollbacks, and risk downgrades. From Phase 7, approvals and rejections are recorded through the `AuditLog` port in `<artifacts>/audit/audit.jsonl`: one JSON line per decision, each numbered and chained to the one before by SHA-256, written under an exclusive lock and fsynced before the run's record changes; a broken chain refuses every further decision (ADR 0011). Who decided is recorded from Phase 10, with members. In Phase 10 the log becomes a table whose role may only insert.
 - **Browser isolation:**
   - a fresh browser context per run, with no shared cookies across workspaces
   - a per-run downloads directory

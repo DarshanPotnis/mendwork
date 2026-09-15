@@ -25,6 +25,7 @@ from mendwork.adapters.secrets_env.naming import secret_variable_name
 from mendwork.adapters.storage_fs.file_ops import write_new_file
 from mendwork.adapters.workflow_yaml.codec import WorkflowYamlCodec
 from mendwork.apps.cli.arguments import parse_input_arguments
+from mendwork.apps.cli.commands import process_scrubber
 from mendwork.apps.cli.exit_codes import ExitCode, exit_code_for
 from mendwork.apps.cli.record_output import (
     HumanRecordingProgress,
@@ -52,6 +53,7 @@ from mendwork.engine.ports.recording import RecordingLauncher, StopSignal
 from mendwork.engine.ports.timer import Timer
 from mendwork.engine.recording.assembly import assemble
 from mendwork.engine.recording.recorder import Recorder
+from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.settings import Settings
 
 WORKFLOW_SUFFIXES = (".yaml", ".yml")
@@ -78,8 +80,12 @@ class Verifier(Protocol):
         *,
         slow_mo_ms: int | None,
         stdout: TextIO,
+        scrubber: SecretScrubber,
     ) -> Run:
-        """The verification run. Raises SecretUnavailable before starting if a secret is missing."""
+        """The verification run. Raises SecretUnavailable before starting if a secret is missing.
+
+        Every secret it resolves is registered with ``scrubber``, the process's.
+        """
         ...
 
 
@@ -107,6 +113,7 @@ def build_record_command(dependencies: RecordDependencies) -> Callable[..., None
     """The ``record`` command, composed of the given dependencies."""
 
     def record(
+        ctx: typer.Context,
         start_url: Annotated[str, typer.Argument(help="The page to start recording on.")],
         out: Annotated[
             Path,
@@ -137,7 +144,13 @@ def build_record_command(dependencies: RecordDependencies) -> Callable[..., None
         ] = None,
     ) -> None:
         """Record a workflow by doing it once in a browser, then verify it by replaying it."""
-        command = RecordCommand(dependencies, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
+        command = RecordCommand(
+            dependencies,
+            stdin=sys.stdin,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            scrubber=process_scrubber(ctx),
+        )
         code = command.execute(
             start_url=start_url, out=out, verify=verify, inputs=inputs or [], slow_mo_ms=slow_mo
         )
@@ -150,12 +163,19 @@ class RecordCommand:
     """One ``mendwork record`` invocation."""
 
     def __init__(
-        self, dependencies: RecordDependencies, *, stdin: TextIO, stdout: TextIO, stderr: TextIO
+        self,
+        dependencies: RecordDependencies,
+        *,
+        stdin: TextIO,
+        stdout: TextIO,
+        stderr: TextIO,
+        scrubber: SecretScrubber,
     ) -> None:
         self._deps = dependencies
         self._stdin = stdin
         self._stdout = stdout
         self._stderr = stderr
+        self._scrubber = scrubber
 
     def execute(
         self,
@@ -250,7 +270,12 @@ class RecordCommand:
         try:
             run = asyncio.run(
                 self._deps.verify(
-                    version, values, settings, slow_mo_ms=slow_mo_ms, stdout=self._stdout
+                    version,
+                    values,
+                    settings,
+                    slow_mo_ms=slow_mo_ms,
+                    stdout=self._stdout,
+                    scrubber=self._scrubber,
                 )
             )
         except SecretUnavailable as error:

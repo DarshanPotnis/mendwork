@@ -7,9 +7,11 @@ from importlib.metadata import version as package_version
 
 import pytest
 import structlog
+import typer
 from typer.testing import CliRunner, Result
 
 from mendwork.apps.cli.main import app, main
+from mendwork.engine.safety.secret_scrub import SecretScrubber
 
 
 def test_version_option_prints_the_installed_version(
@@ -36,9 +38,11 @@ def test_an_unknown_command_fails_loudly() -> None:
 
 def test_startup_installs_the_logging_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MENDWORK_LOG_LEVEL", "DEBUG")
+    ctx = typer.Context(typer.main.get_command(app))
 
-    main(version=False)
+    main(ctx, version=False)
 
+    assert isinstance(ctx.obj, SecretScrubber)
     root = logging.getLogger()
     assert root.level == logging.DEBUG
     assert len(root.handlers) == 1

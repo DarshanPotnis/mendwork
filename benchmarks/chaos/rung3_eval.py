@@ -55,6 +55,7 @@ from mendwork.apps.portal.server import PortalServer
 from mendwork.engine.domain.model_evidence import ModelUsageTotals
 from mendwork.engine.domain.runs import Run
 from mendwork.engine.domain.workflow import WorkflowVersion
+from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.observability import configure_logging
 from mendwork.settings import Settings
 
@@ -353,7 +354,7 @@ async def evaluate(
 ) -> list[list[CaseResult]]:
     """Run every case ``repeat`` times, one run at a time, and report as each finishes."""
     settings = Settings().model_copy(update={"trace_on_failure": False})
-    configure_logging(settings)
+    configure_logging(settings, SecretScrubber())
     content = await asyncio.to_thread(WORKFLOW_PATH.read_bytes)
     workflow = WorkflowYamlCodec(max_bytes=settings.workflow_max_bytes).decode(
         content, source=str(WORKFLOW_PATH)

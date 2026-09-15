@@ -1,0 +1,206 @@
+# yaml-language-server: $schema=../../schemas/workflow.schema.json
+# Export shipments for a date range from the Harborline supplier portal (chaos portal).
+# A test copy of workflows/examples/download_report.yaml whose download is irreversible, so a
+# heal there stops for approval. tests/unit/test_fixture_workflows.py keeps it identical to the
+# example in every other field.
+# The range is not the page's default (Jan 1 - Mar 31), so the filter checkpoint can only
+# pass if the filter actually ran.
+schema_version: 1
+workflow_id: download_report
+version: 1
+created_at: "2026-09-11T00:00:00Z"
+
+inputs:
+  - name: portal_url
+    kind: url
+    description: Sign-in page of the portal, e.g. http://127.0.0.1:8765/index.html
+  - name: account_email
+    kind: text
+    description: Email address of the portal account
+
+secrets:
+  - portal_password
+
+steps:
+  - id: open_sign_in
+    intent: Open the supplier portal sign-in page
+    action: navigate
+    risk: safe
+    value: {kind: input, name: portal_url}
+    checkpoints:
+      - kind: element_visible
+        selector: {strategy: role_name, role: heading, name: Sign in to the supplier portal}
+
+  - id: fill_email
+    intent: Fill the 'Email address' field
+    action: fill
+    risk: caution
+    target:
+      tag: input
+      role: textbox
+      accessible_name: Email address
+      label_text: Email address
+      attributes: {id: email, name: email, type: email, autocomplete: username, data_testid: login-email}
+      nearby_text: [Sign in to the supplier portal]
+      structural_path: main > section > form > div > div > input
+      bbox: {x: 0.3555, y: 0.3903, width: 0.2891, height: 0.0563}
+      selectors:
+        - {strategy: test_id, value: login-email}
+        - {strategy: role_name, role: textbox, name: Email address}
+        - {strategy: label, value: Email address}
+        - {strategy: css, value: "#email"}
+    value: {kind: input, name: account_email}
+    checkpoints:
+      - kind: field_has_value
+
+  - id: fill_password
+    intent: Fill the 'Password' field
+    action: fill
+    risk: caution
+    target:
+      tag: input
+      accessible_name: Password          # ARIA defines no role for password inputs
+      label_text: Password
+      attributes: {id: password, name: password, type: password, autocomplete: current-password, data_testid: login-password}
+      nearby_text: [Sign in to the supplier portal]
+      structural_path: main > section > form > div > div > input
+      bbox: {x: 0.3555, y: 0.5062, width: 0.2891, height: 0.0563}
+      selectors:
+        - {strategy: test_id, value: login-password}
+        - {strategy: label, value: Password}
+        - {strategy: css, value: "#password"}
+    value: {kind: secret, name: portal_password}
+    checkpoints:
+      - kind: field_has_value
+
+  - id: sign_in
+    intent: Click the 'Sign in' button
+    action: click
+    risk: caution                        # changes session state, reversibly (sign out undoes it)
+    target:
+      tag: button
+      role: button
+      accessible_name: Sign in
+      text: Sign in
+      attributes: {id: sign-in, type: submit, data_testid: login-submit}
+      nearby_text: [Sign in to the supplier portal]
+      structural_path: main > section > form > div > button
+      bbox: {x: 0.3555, y: 0.5958, width: 0.2891, height: 0.0528}
+      selectors:
+        - {strategy: test_id, value: login-submit}
+        - {strategy: role_name, role: button, name: Sign in}
+        - {strategy: text, value: Sign in}
+        - {strategy: css, value: "#sign-in"}
+    checkpoints:
+      - kind: url_matches
+        mode: regex
+        pattern: 'https?://[^?#]+/dashboard\.html(?:[?#].*)?'
+      - kind: no_error_banner            # "Incorrect email or password." is role=alert
+
+  - id: open_reports
+    intent: Click the 'View reports' link
+    action: click
+    risk: safe
+    target:
+      tag: a
+      role: link
+      accessible_name: View reports
+      text: View reports
+      attributes: {id: open-reports, href: /reports.html, data_testid: dashboard-open-reports}
+      nearby_text: [Shipment reports]
+      structural_path: main > div > section > a
+      bbox: {x: 0.082, y: 0.4508, width: 0.0978, height: 0.0528}
+      selectors:
+        - {strategy: test_id, value: dashboard-open-reports}
+        - {strategy: role_name, role: link, name: View reports}
+        - {strategy: text, value: View reports}
+        - {strategy: css, value: "#open-reports"}
+    checkpoints:
+      - kind: url_matches
+        mode: regex
+        pattern: 'https?://[^?#]+/reports\.html(?:[?#].*)?'
+
+  - id: fill_date_from
+    intent: Fill the 'From' date field
+    action: fill
+    risk: caution
+    target:
+      tag: input
+      accessible_name: From
+      label_text: From
+      attributes: {id: date-from, name: from, type: date, data_testid: report-date-from}
+      nearby_text: [Date range]
+      structural_path: main > section > form > div > div > input
+      bbox: {x: 0.082, y: 0.3862, width: 0.1219, height: 0.059}
+      selectors:
+        - {strategy: test_id, value: report-date-from}
+        - {strategy: label, value: From}
+        - {strategy: css, value: "#date-from"}
+    value: {kind: literal, value: "2026-02-10"}
+    checkpoints:
+      - kind: field_has_value
+
+  - id: fill_date_to
+    intent: Fill the 'To' date field
+    action: fill
+    risk: caution
+    target:
+      tag: input
+      accessible_name: To
+      label_text: To
+      attributes: {id: date-to, name: to, type: date, data_testid: report-date-to}
+      nearby_text: [Date range]
+      structural_path: main > section > form > div > div > input
+      bbox: {x: 0.2164, y: 0.3862, width: 0.1219, height: 0.059}
+      selectors:
+        - {strategy: test_id, value: report-date-to}
+        - {strategy: label, value: To}
+        - {strategy: css, value: "#date-to"}
+    value: {kind: literal, value: "2026-04-20"}
+    checkpoints:
+      - kind: field_has_value
+
+  - id: apply_filter
+    intent: Click the 'Apply filter' button
+    action: click
+    risk: safe                           # reads data only; a form submit is a signal, not a rule
+    target:
+      tag: button
+      role: button
+      accessible_name: Apply filter
+      text: Apply filter
+      attributes: {id: apply-filter, type: submit}
+      nearby_text: [Date range]
+      structural_path: main > section > form > div > button
+      bbox: {x: 0.3508, y: 0.3925, width: 0.0883, height: 0.0528}
+      selectors:
+        - {strategy: role_name, role: button, name: Apply filter}
+        - {strategy: text, value: Apply filter}
+        - {strategy: css, value: "#apply-filter"}
+    checkpoints:
+      - kind: text_present
+        text: 14 shipments between Feb 10, 2026 and Apr 20, 2026
+      - kind: no_error_banner            # a reversed range shows a role=alert error
+
+  - id: download_csv
+    intent: Click the 'Download CSV' button
+    action: click
+    risk: irreversible                 # raised for approval tests; otherwise the example
+    target:
+      tag: button
+      role: button
+      accessible_name: Download CSV
+      text: Download CSV
+      attributes: {id: download-csv, type: button, data_testid: download-csv}
+      nearby_text: [Date range]
+      structural_path: main > section > form > div > button
+      bbox: {x: 0.4484, y: 0.3925, width: 0.1091, height: 0.0528}
+      selectors:
+        - {strategy: test_id, value: download-csv}
+        - {strategy: role_name, role: button, name: Download CSV}
+        - {strategy: text, value: Download CSV}
+        - {strategy: css, value: "#download-csv"}
+    checkpoints:
+      - kind: download_completed
+        filename_pattern: 'shipments_2026-02-10_to_2026-04-20\.csv'
+        timeout_ms: 30000

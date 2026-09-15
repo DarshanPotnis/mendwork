@@ -20,6 +20,8 @@ from mendwork.engine.errors import (
 from mendwork.engine.replay.retry import TIMEOUT_REASON
 
 _NET_ERROR: Final = re.compile(r"net::(ERR_[A-Z0-9_]+)")
+SOCKS_CONNECTION_FAILED: Final = "ERR_SOCKS_CONNECTION_FAILED"
+"""How Chromium reports any connection the egress gateway did not complete, whatever the cause."""
 _CLOSED: Final = (
     "Target page, context or browser has been closed",
     "Browser has been closed",
@@ -59,8 +61,14 @@ def browser_closed(error: PlaywrightError) -> BrowserUnavailable:
     )
 
 
-def navigation_error(error: PlaywrightError) -> MendworkError:
-    """A failed page load, with a reason the retry policy can classify."""
+def navigation_error(error: PlaywrightError, *, upstream_reason: str | None) -> MendworkError:
+    """A failed page load, with a reason the retry policy can classify.
+
+    Through the egress gateway, every failed connection reaches Chromium as
+    ``ERR_SOCKS_CONNECTION_FAILED``. ``upstream_reason`` is what the gateway recorded (a refused
+    or timed-out connect, a name that did not resolve), so retries classify the failure exactly
+    as they would a direct connection's.
+    """
     if is_closed(error):
         return browser_closed(error)
     if isinstance(error, PlaywrightTimeoutError):
@@ -68,6 +76,8 @@ def navigation_error(error: PlaywrightError) -> MendworkError:
     else:
         match = _NET_ERROR.search(error.message)
         reason = match.group(1) if match else "navigation_failed"
+        if reason == SOCKS_CONNECTION_FAILED and upstream_reason is not None:
+            reason = upstream_reason
     return NavigationError("the page could not be loaded", reason=reason, detail=first_line(error))
 
 

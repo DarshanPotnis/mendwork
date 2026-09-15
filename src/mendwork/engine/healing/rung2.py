@@ -127,11 +127,8 @@ async def run_rung2(
             ranked = (refused, *ranked[1:])
             decision = Declined(RungOutcome.TOP_REJECTED, decision.runner_up, decision.margin)
     report = _report(context, request, pool.scan.total, ranked, decision, confirmed)
-    if (
-        context.chooser is not None
-        and isinstance(decision, Declined)
-        and takes_up(decision.outcome)
-    ):
+    rung3_runs = request.reuse is not None or (context.chooser is not None and request.ask_model)
+    if rung3_runs and isinstance(decision, Declined) and takes_up(decision.outcome):
         return Rung2Result(report, declined=Rung2Decline(ranked, report, epoch))
     winner = decision.winner.candidate.element if isinstance(decision, Accepted) else None
     await browser.release(

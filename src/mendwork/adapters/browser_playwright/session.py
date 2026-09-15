@@ -12,6 +12,7 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from pydantic import BaseModel, ConfigDict
 
 from mendwork.adapters.browser_playwright.candidates import scan_candidates
+from mendwork.adapters.browser_playwright.egress.log import EgressLog
 from mendwork.adapters.browser_playwright.errors import (
     action_error,
     browser_closed,
@@ -51,6 +52,7 @@ from mendwork.engine.ports.browser_types import (
 )
 from mendwork.engine.ports.candidate_types import CandidateQuery, CandidateScan
 from mendwork.engine.ports.element_types import ElementFacts
+from mendwork.engine.safety.egress_blocks import EgressBlock, egress_blocked
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 
 _DETACHED: Final = Actionability(attached=False, visible=False, enabled=False, editable=False)
@@ -86,11 +88,13 @@ class PlaywrightSession:
         scripts: PageScripts,
         observations: Observations,
         tracer: TraceRecorder,
+        egress: EgressLog,
     ) -> None:
         self._page = page
         self._scripts = scripts
         self._observations = observations
         self._tracer = tracer
+        self._egress = egress
         self._handles: dict[ElementRef, ElementHandle] = {}
         self._pinned = 0
         self._log = structlog.stdlib.get_logger("mendwork.browser")
@@ -103,10 +107,18 @@ class PlaywrightSession:
     # Navigation.
 
     async def navigate(self, url: str, *, timeout_ms: int) -> NavigationOutcome:
+        mark = self._egress.mark()
         try:
             response = await self._page.goto(url, wait_until="load", timeout=timeout_ms)
         except PlaywrightError as error:
-            raise navigation_error(error) from error
+            # A refusal on the way (the page, a redirect hop, or a connection) is reported as
+            # the refusal, not as the network error Chromium saw.
+            blocks = self._egress.take_blocks()
+            if blocks:
+                raise egress_blocked(blocks) from error
+            failure = self._egress.failure_since(mark)
+            upstream = None if failure is None else failure.reason
+            raise navigation_error(error, upstream_reason=upstream) from error
         await self._resume_tracing(timeout_ms)
         return NavigationOutcome(
             url=self._page.url, status=None if response is None else response.status
@@ -128,6 +140,9 @@ class PlaywrightSession:
 
     async def take_opened_pages(self) -> int:
         return await self._observations.take_opened_pages()
+
+    async def take_egress_blocks(self) -> tuple[EgressBlock, ...]:
+        return self._egress.take_blocks()
 
     # Settling.
 

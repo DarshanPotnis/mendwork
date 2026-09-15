@@ -19,10 +19,12 @@ from mendwork.engine.replay.replayer import Replayer
 from mendwork.engine.safety.budgets import BudgetLimits
 from tests.fakes.browser import FakeBrowser, FakeLauncher
 from tests.fakes.clock import FakeClock
+from tests.fakes.egress import TEST_POLICY, FakeResolver
 from tests.fakes.ledger import InMemoryUsageLedger
 from tests.fakes.ports import (
     DictSecretResolver,
     InMemoryArtifactStore,
+    InMemoryRunRecords,
     RecordingEventSink,
     SequenceRandom,
     SequentialRunIds,
@@ -140,6 +142,9 @@ async def replay(
         randomness=SequenceRandom([0.0]),
         run_ids=SequentialRunIds(),
         config=config(),
+        egress=TEST_POLICY,
+        resolver=FakeResolver(),
+        records=InMemoryRunRecords(),
         model=rung,
     )
     return await replayer.run(version(steps=list(steps)), {}), events

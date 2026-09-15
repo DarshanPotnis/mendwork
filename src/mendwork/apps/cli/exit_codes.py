@@ -1,4 +1,4 @@
-"""Process exit codes for ``mendwork run``, so scripts can tell failures apart."""
+"""Process exit codes for commands that execute a run, so scripts can tell outcomes apart."""
 
 from enum import IntEnum
 
@@ -18,14 +18,23 @@ class ExitCode(IntEnum):
     """Mendwork's own machinery failed, such as the browser or the artifact store."""
     NEEDS_PERSON = 4
     """The run stopped for a person: a heal awaits approval, or an action needs review."""
+    CANCELLED = 130
+    """The run was interrupted before it finished and dispatched nothing irreversible; 130 is the
+    shell's code for a process ended by Ctrl+C."""
 
 
 def exit_code_for(run: Run) -> ExitCode:
-    """The exit code for a run that started."""
+    """The exit code for a run that started.
+
+    An interrupted run that needs review exits 4 like any other run stopped for a person, so a
+    script alerting a person on 4 never misses one.
+    """
     if run.status is RunStatus.SUCCEEDED:
         return ExitCode.SUCCEEDED
     if run.status in {RunStatus.AWAITING_APPROVAL, RunStatus.NEEDS_REVIEW}:
         return ExitCode.NEEDS_PERSON
+    if run.status is RunStatus.CANCELLED:
+        return ExitCode.CANCELLED
     if run.error is not None and run.error.category is ErrorCategory.INFRASTRUCTURE:
         return ExitCode.INFRASTRUCTURE
     return ExitCode.STEP_FAILED

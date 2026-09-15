@@ -29,10 +29,12 @@ from mendwork.engine.replay.replayer import Replayer
 from mendwork.engine.safety.budgets import BudgetLimits
 from tests.fakes.browser import FakeBrowser, FakeElement, FakeLauncher
 from tests.fakes.clock import FakeClock
+from tests.fakes.egress import TEST_POLICY, FakeResolver
 from tests.fakes.ledger import InMemoryUsageLedger
 from tests.fakes.ports import (
     DictSecretResolver,
     InMemoryArtifactStore,
+    InMemoryRunRecords,
     RecordingEventSink,
     SequenceRandom,
     SequentialRunIds,
@@ -180,6 +182,9 @@ async def test_no_encoding_of_a_typed_secret_reaches_any_provider(
         randomness=SequenceRandom([0.0]),
         run_ids=SequentialRunIds(),
         config=config(),
+        egress=TEST_POLICY,
+        resolver=FakeResolver(),
+        records=InMemoryRunRecords(artifacts),
         model=rung,
     )
     workflow = version(

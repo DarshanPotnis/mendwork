@@ -38,11 +38,14 @@ def day_resets_at(day: date) -> datetime:
 class RunModelBudget:
     """One run's model calls: its own count, the day's ledger, and the usage it added up."""
 
-    def __init__(self, *, limits: BudgetLimits, ledger: UsageLedger, clock: Clock) -> None:
+    def __init__(
+        self, *, limits: BudgetLimits, ledger: UsageLedger, clock: Clock, reserved: int = 0
+    ) -> None:
         self._limits = limits
         self._ledger = ledger
         self._clock = clock
-        self._reserved = 0
+        self._reserved = reserved
+        """Calls reserved so far, earlier executions of the run included."""
         self._totals = ModelUsageTotals()
 
     @property

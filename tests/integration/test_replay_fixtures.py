@@ -15,20 +15,27 @@ import pytest_asyncio
 from playwright.async_api import Browser, Page, Route
 from pydantic import SecretStr, TypeAdapter
 
-from mendwork.adapters.browser_playwright.launcher import PlaywrightLauncher, SessionOptions
+from mendwork.adapters.browser_playwright.launcher import (
+    EgressEnforcement,
+    PlaywrightLauncher,
+    SessionOptions,
+)
 from mendwork.adapters.browser_playwright.session import PlaywrightSession
 from mendwork.engine.domain.documents import parse_workflow_document
 from mendwork.engine.domain.runs import RunStatus, TraceWithheldReason, parse_run_id
 from mendwork.engine.domain.selectors import Selector
 from mendwork.engine.errors import TargetNotFound
 from mendwork.engine.ports.browser_types import SecretText, TraceNotSaved, TraceSaved
+from mendwork.engine.safety.egress import EgressPolicy
 from mendwork.engine.safety.secret_scrub import SecretScrubber
+from tests.fakes.egress import FakeResolver
 from tests.integration.replay_harness import PageHook, ReplayOutcome, replay, replay_settings
 from tests.workflows import Document
 
 pytestmark = [pytest.mark.browser, pytest.mark.asyncio(loop_scope="session")]
 
-ORIGIN: Final = "https://fixture.mendwork.test/"
+FIXTURE_HOST: Final = "fixture.mendwork.test"
+ORIGIN: Final = f"https://{FIXTURE_HOST}/"
 SELECTOR: TypeAdapter[Selector] = TypeAdapter(Selector)
 OPTIONS: Final = SessionOptions(
     viewport_width=1280, viewport_height=720, default_timeout_ms=5_000, trace_on_failure=True
@@ -112,6 +119,7 @@ async def run_fixture(
         tmp_path,
         settings=replay_settings(**timing),
         prepare=serve(pages),
+        domains=(FIXTURE_HOST,),
     )
 
 
@@ -136,6 +144,7 @@ async def test_selectors_that_find_different_elements_abstain_without_clicking(
         tmp_path,
         prepare=serve({"page.html": page}),
         inspect=inspect,
+        domains=(FIXTURE_HOST,),
     )
 
     step = outcome.step("save")
@@ -235,10 +244,20 @@ async def test_a_response_caused_by_the_click_is_observed(browser: Browser, tmp_
     assert outcome.step("save").checkpoints[0].detail == f"200 {ORIGIN}api/save"
 
 
+async def fixture_launcher(browser: Browser) -> PlaywrightLauncher:
+    """A launcher whose sessions may load the fixture origin, which resolves to a public address."""
+    enforcement = EgressEnforcement(resolver=FakeResolver(), timeout_ms=5_000)
+    return await PlaywrightLauncher.create(browser, OPTIONS, enforcement)
+
+
+FIXTURE_POLICY: Final = EgressPolicy(allowed_domains=(FIXTURE_HOST,))
+
+
 @pytest_asyncio.fixture(loop_scope="session")
 async def session(browser: Browser) -> AsyncIterator[PlaywrightSession]:
-    launcher = await PlaywrightLauncher.create(browser, OPTIONS)
-    async with launcher.session(parse_run_id("20260911T000000Z-00000001")) as opened:
+    launcher = await fixture_launcher(browser)
+    run_id = parse_run_id("20260911T000000Z-00000001")
+    async with launcher.session(run_id, FIXTURE_POLICY) as opened:
         yield opened
 
 
@@ -310,8 +329,9 @@ async def test_a_trace_recorded_after_the_secret_page_is_gone_is_kept_and_clean(
     secret = "trace-probe-7731-secret"
     scrubber = SecretScrubber()
     scrubber.register(SecretStr(secret))
-    launcher = await PlaywrightLauncher.create(browser, OPTIONS)
-    async with launcher.session(parse_run_id("20260911T000000Z-00000002")) as live:
+    launcher = await fixture_launcher(browser)
+    run_id = parse_run_id("20260911T000000Z-00000002")
+    async with launcher.session(run_id, FIXTURE_POLICY) as live:
         await live.page.context.route(
             f"{ORIGIN}**",
             lambda route: route.fulfill(

@@ -45,6 +45,7 @@ from mendwork.engine.healing.pick_rules import (
 )
 from mendwork.engine.ports.candidate_types import LiveCandidate
 from mendwork.engine.safety.heal_policy import VerificationStrength, verification_strength
+from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.observability import configure_logging
 from mendwork.settings import Settings
 
@@ -119,7 +120,7 @@ def lines_of(source: str, asked: Sequence[Asked], steps: Mapping[str, Step]) -> 
 
 async def collect(out: TextIO) -> list[Line]:
     settings = Settings().model_copy(update={"trace_on_failure": False})
-    configure_logging(settings)
+    configure_logging(settings, SecretScrubber())
     workflows = load_workflows()
     steps: dict[str, Step] = {
         str(step.id): step for workflow in workflows.values() for step in workflow.version.steps

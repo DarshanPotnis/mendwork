@@ -33,6 +33,7 @@ from benchmarks.chaos.heal_pairs import ABSTAIN_TABLE_PATH, PORTAL_ROOT, load_ta
 from benchmarks.chaos.models import MODEL_MODES, ModelMode
 from mendwork.apps.cli.wiring import model_client
 from mendwork.apps.portal.server import PortalServer
+from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.observability import configure_logging
 from mendwork.settings import Settings
 
@@ -42,7 +43,7 @@ async def suite(
 ) -> int:
     """Run the suite ``repeat`` times; 0 when every case is as expected and identical each time."""
     settings = Settings()
-    configure_logging(settings)
+    configure_logging(settings, SecretScrubber())
     workflows = load_workflows()
     cases = build_cases(workflows, load_table(), load_table(ABSTAIN_TABLE_PATH))
     runs: list[dict[str, CaseOutcome]] = []

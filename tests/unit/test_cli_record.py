@@ -34,6 +34,7 @@ from mendwork.engine.domain.workflow import WorkflowVersion
 from mendwork.engine.errors import BrowserUnavailable, MendworkError, SecretUnavailable
 from mendwork.engine.ports.recording import RecordingLauncher
 from mendwork.engine.ports.recording_types import ClickCapture, FieldValue, FillCapture
+from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.settings import Settings
 from tests.fakes.browser import FakeBrowser, FakeElement
 from tests.fakes.clock import FakeClock
@@ -91,6 +92,11 @@ def sign_in_page() -> FakeRecordingBrowser:
     return page
 
 
+def with_process_scrubber(ctx: typer.Context) -> None:
+    """The entry point's part that commands rely on: the process's secret scrubber."""
+    ctx.obj = SecretScrubber()
+
+
 @dataclass
 class Scenario:
     """What the fake browser and the fake verification replay do."""
@@ -119,6 +125,7 @@ class Scenario:
             *,
             slow_mo_ms: int | None,
             stdout: TextIO,
+            scrubber: SecretScrubber,
         ) -> Run:
             self.verified.append((version, dict(inputs)))
             if self.verify_error is not None:
@@ -150,7 +157,7 @@ class Scenario:
         self, arguments: list[str], answers: str = "", env: dict[str, str] | None = None
     ) -> Result:
         app = typer.Typer()
-        app.callback()(lambda: None)
+        app.callback()(with_process_scrubber)
         app.command(name="record")(build_record_command(self.dependencies()))
         return CliRunner().invoke(app, ["record", *arguments], input=answers, env=env or {})
 

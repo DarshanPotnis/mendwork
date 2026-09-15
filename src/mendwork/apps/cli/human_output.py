@@ -29,6 +29,7 @@ from mendwork.engine.domain.events import (
     HealVerifiedEvent,
     RunEvent,
     RunFinishedEvent,
+    RunResumedEvent,
     RunStartedEvent,
     StateRestoredEvent,
     StepFailedEvent,
@@ -49,12 +50,14 @@ from mendwork.engine.domain.targets import SelectorOutcome, TargetEvidence
 
 _MODEL_RUNG = 3
 _STOPPED_WORDS = {
+    RunStatus.CANCELLED: "CANCELLED",
     RunStatus.AWAITING_APPROVAL: "AWAITING APPROVAL",
     RunStatus.NEEDS_REVIEW: "NEEDS REVIEW",
 }
 _RESULT_WORDS = {
     StepStatus.SUCCEEDED: "succeeded",
     StepStatus.FAILED: "FAILED",
+    StepStatus.CANCELLED: "CANCELLED",
     StepStatus.AWAITING_APPROVAL: "AWAITING APPROVAL",
     StepStatus.NEEDS_REVIEW: "NEEDS REVIEW",
 }
@@ -81,6 +84,20 @@ class HumanProgress:
                 return [
                     f"Run {event.run_id} · {event.workflow_id} v{event.workflow_version} · "
                     f"{event.step_count} {steps}",
+                    f"Artifacts: {self._run_directory / event.run_id}",
+                    "",
+                ]
+            case RunResumedEvent():
+                self._step_count = event.step_count
+                replayed = (
+                    f"; replaying steps 1 to {event.index} to rebuild its page"
+                    if event.index
+                    else ""
+                )
+                return [
+                    f"Run {event.run_id} resumed · {event.workflow_id} v{event.workflow_version} · "
+                    f"approved proposal {event.proposal_id} for step {event.index + 1} "
+                    f"{event.step_id}{replayed}",
                     f"Artifacts: {self._run_directory / event.run_id}",
                     "",
                 ]
@@ -307,7 +324,23 @@ def _status_lines(run: Run, run_directory: Path) -> list[str]:
     evidence.extend(f"not captured: {problem}" for problem in failed.artifacts.capture_errors)
     for position, item in enumerate(evidence):
         lines.append(("Evidence: " if position == 0 else "          ") + item)
-    return lines
+    return lines + decision_commands(run)
+
+
+def decision_commands(run: Run) -> list[str]:
+    """The commands that review and decide a run's pending proposal, when it has one."""
+    if run.status is not RunStatus.AWAITING_APPROVAL:
+        return []
+    return [
+        line
+        for item in run.proposals
+        if item.pending
+        for line in (
+            f"Review:   mendwork show {run.run_id}",
+            f"Approve:  mendwork approve {run.run_id} {item.proposal.id}",
+            f'Reject:   mendwork reject {run.run_id} {item.proposal.id} --reason "why"',
+        )
+    ]
 
 
 def trace_withheld_line(withheld: TraceWithheld) -> str:

@@ -14,6 +14,7 @@ from mendwork.apps.cli.main import app
 from mendwork.engine.domain.runs import RunId
 from mendwork.engine.errors import BrowserUnavailable, RunInputError
 from mendwork.engine.ports.browser import BrowserPort
+from mendwork.engine.safety.egress import EgressPolicy
 from tests.workflows import example_path
 
 EXAMPLE = str(example_path("download_report"))
@@ -102,7 +103,7 @@ class UnlaunchableChromium:
     ) -> None:
         return None
 
-    def session(self, run_id: RunId) -> "FailingSession":
+    def session(self, run_id: RunId, egress: EgressPolicy) -> "FailingSession":
         return FailingSession()
 
 
@@ -121,12 +122,30 @@ def unlaunchable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("mendwork.apps.cli.run.ChromiumLauncher", UnlaunchableChromium)
 
 
-def test_a_browser_that_cannot_launch_exits_3_with_a_run_record(
+def test_a_start_url_the_egress_policy_refuses_exits_2_before_anything_runs(
     tmp_path: Path, unlaunchable: None
 ) -> None:
     result = invoke(
         [EXAMPLE, "--artifacts-dir", str(tmp_path), "--output", "json", *INPUTS],
         {"MENDWORK_SECRET_PORTAL_PASSWORD": "x"},
+    )
+
+    assert result.exit_code == 2
+    assert "the egress policy refused 127.0.0.1: 127.0.0.1 is a loopback address" in result.stderr
+    assert "MENDWORK_EGRESS_LOOPBACK_EXCEPTIONS" in result.stderr
+    assert json.loads(result.stdout.splitlines()[-1])["error"]["type"] == "EgressBlocked"
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_browser_that_cannot_launch_exits_3_with_a_run_record(
+    tmp_path: Path, unlaunchable: None
+) -> None:
+    result = invoke(
+        [EXAMPLE, "--artifacts-dir", str(tmp_path), "--output", "json", *INPUTS],
+        {
+            "MENDWORK_SECRET_PORTAL_PASSWORD": "x",
+            "MENDWORK_EGRESS_LOOPBACK_EXCEPTIONS": '["127.0.0.1:9"]',
+        },
     )
 
     assert result.exit_code == 3

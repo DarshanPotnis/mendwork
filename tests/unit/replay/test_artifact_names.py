@@ -11,6 +11,7 @@ from mendwork.engine.replay.artifact_names import (
     safe_filename,
     screenshot_name,
     step_label,
+    trace_name,
 )
 
 
@@ -19,6 +20,13 @@ def test_step_evidence_is_named_by_one_based_position_and_id() -> None:
     assert screenshot_name(3, "sign_in") == "steps/004_sign_in.png"
     assert dom_snapshot_name(3, "sign_in") == "failure/004_sign_in.dom.html"
     assert (RUN_RECORD, TRACE) == ("run.json", "failure/trace.zip")
+
+
+def test_a_resumes_evidence_is_named_for_its_segment_so_the_paused_evidence_stays() -> None:
+    assert screenshot_name(3, "sign_in", 1) == "steps/004_sign_in.png"
+    assert screenshot_name(3, "sign_in", 2) == "steps/004_sign_in.segment2.png"
+    assert dom_snapshot_name(3, "sign_in", 3) == "failure/004_sign_in.segment3.dom.html"
+    assert (trace_name(), trace_name(2)) == (TRACE, "failure/trace.segment2.zip")
 
 
 @pytest.mark.parametrize(

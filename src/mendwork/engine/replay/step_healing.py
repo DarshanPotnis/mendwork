@@ -16,6 +16,10 @@ For each pass through the ladder:
    last known-good state and Rung 0 runs again on it.
 
 A heal Rung 3's model chose is held to exactly the same gates, action, and checkpoints.
+
+When an approved run resumes (ADR 0011), the ladder runs without asking a model, and a heal may act
+only on the approved element, matched on what it is rather than where it sits: nothing accepted, or
+any other element, fails the step with ApprovalStale before anything acts.
 """
 
 from collections.abc import Callable
@@ -24,11 +28,12 @@ import structlog
 
 from mendwork.engine.domain.enums import RiskLevel
 from mendwork.engine.domain.fingerprint import Fingerprint
-from mendwork.engine.domain.heals import AbstentionReason, Verification
+from mendwork.engine.domain.heals import AbstentionReason, HealProposal, Verification
 from mendwork.engine.domain.runs import CheckpointResult
 from mendwork.engine.domain.steps import FillStep, Step, step_target
 from mendwork.engine.domain.targets import TargetEvidence
 from mendwork.engine.errors import (
+    ApprovalStale,
     CheckpointFailed,
     HealAbstained,
     MendworkError,
@@ -37,11 +42,11 @@ from mendwork.engine.errors import (
     TargetNotActionable,
     TargetNotFound,
 )
-from mendwork.engine.healing.candidates import CandidateSignature
+from mendwork.engine.healing.candidates import CandidateSignature, SignatureMatch, approved_identity
 from mendwork.engine.healing.checks import mask_selector
 from mendwork.engine.healing.context import AcceptedHeal, ClimbRequest, LadderContext
 from mendwork.engine.healing.explain import abstained
-from mendwork.engine.healing.gates import HealStop, before_acting, over_limit
+from mendwork.engine.healing.gates import GateContext, HealStop, before_acting, over_limit
 from mendwork.engine.healing.ladder import ClimbResult, climb, is_healable
 from mendwork.engine.healing.recovery import RestoreRequest, StateRestorer
 from mendwork.engine.healing.run_state import RunHealState
@@ -56,6 +61,7 @@ from mendwork.engine.replay.progress import StepProgress
 from mendwork.engine.replay.reports import identity_report
 from mendwork.engine.replay.rung0 import resolve_target
 from mendwork.engine.replay.step_actions import ActionTarget, StepActions
+from mendwork.engine.safety.approvals import approval_mismatch, approval_stale, stale_reason_for
 from mendwork.engine.safety.heal_policy import (
     FailedHealRecovery,
     heal_may_act,
@@ -108,6 +114,7 @@ class StepHealer:
         """
         step = progress.step
         fingerprint = _target(step)
+        approval = progress.approval
         heal_deadline = Deadline.after(self._timer, self._config.healing.timeout_ms).earliest(
             self._run_deadline
         )
@@ -130,6 +137,8 @@ class StepHealer:
                 excluded=frozenset(excluded),
                 deadline=heal_deadline,
                 heal_actions_used=self._state.heal_actions(step.id),
+                reuse=_approved_pick(approval, self._scrubber),
+                ask_model=approval is None,
             )
             result = await climb(self._ladder, request, current)
             current = await self._attempt(progress, result, current, excluded, heal_deadline)
@@ -139,22 +148,25 @@ class StepHealer:
     ) -> ActionTarget:
         """The target of a step replayed during a restore: only its own verified heal will do.
 
-        A heal Rung 3 verified is found again by its signature, without asking a model.
+        No model is asked: a heal Rung 3 verified is found again by its signature, and any other
+        element a model might pick could only differ from the verified heal.
         """
         step = progress.step
         remembered = self._state.verified(step.id)
         if remembered is None:
             raise failure
+        match = remembered.match(self._scrubber)
         request = ClimbRequest(
             step=step,
             fingerprint=_target(step),
             attempt=1,
             excluded=frozenset(),
             deadline=deadline,
-            reuse=remembered.signature if remembered.rung == _MODEL_RUNG else None,
+            reuse=match if remembered.rung == _MODEL_RUNG else None,
+            ask_model=False,
         )
         accepted = (await climb(self._ladder, request, failure)).accepted
-        if accepted is None or accepted.scored.signature != remembered.signature:
+        if accepted is None or not match.matches(accepted.scored.signature):
             if accepted is not None:
                 await self._browser.release([accepted.scored.candidate.element])
             raise HealAbstained(
@@ -175,6 +187,13 @@ class StepHealer:
         heal_deadline: Deadline,
     ) -> MendworkError | None:
         accepted = result.accepted
+        approval = progress.approval
+        stale = self._stale(approval, result) if approval is not None else None
+        if stale is not None:
+            if accepted is not None:
+                await self._browser.release([accepted.scored.candidate.element])
+            await self._record.attempted(progress, result.reports)
+            raise stale
         if accepted is None:
             await self._record.attempted(progress, result.reports)
             raise self._abstained(progress, result)
@@ -221,17 +240,42 @@ class StepHealer:
         )
         return None
 
+    def _stale(self, approval: HealProposal, result: ClimbResult) -> ApprovalStale | None:
+        """Why the ladder's result is not the approved element, or None when it is."""
+        accepted = result.accepted
+        if accepted is None:
+            reason = stale_reason_for(approval, result.abstention)
+        else:
+            mismatch = approval_mismatch(
+                approval,
+                identity=approved_identity(accepted.scored.signature, self._scrubber),
+                confirmed=identity_report(accepted.identity, self._scrubber),
+            )
+            if mismatch is None:
+                return None
+            reason = mismatch
+        self._log.info("approval_stale", step_id=approval.step_id, stale_reason=reason.value)
+        return approval_stale(approval, reason)
+
     def _blocked(self, progress: StepProgress, accepted: AcceptedHeal) -> MendworkError | None:
+        step = progress.step
         stop = before_acting(
-            progress.step,
+            step,
             accepted,
-            used=self._state.heal_actions(progress.step.id),
-            config=self._config.healing,
-            may_act=self._may_act,
-            scrubber=self._scrubber,
+            GateContext(
+                index=progress.index,
+                proposal_number=self._state.proposals_made + 1,
+                approved=progress.approval is not None,
+                used=self._state.heal_actions(step.id),
+                config=self._config.healing,
+                may_act=self._may_act,
+                scrubber=self._scrubber,
+            ),
         )
         if stop is None:
             return None
+        if stop.proposal is not None:
+            self._state.count_proposal()
         _apply(progress, stop)
         return stop.error
 
@@ -319,6 +363,15 @@ class StepHealer:
         released = [pinned for pinned in progress.pinned if pinned == element]
         progress.pinned[:] = kept
         await self._browser.release(released)
+
+
+def _approved_pick(
+    approval: HealProposal | None, scrubber: SecretScrubber
+) -> SignatureMatch | None:
+    """A model's approved pick is found again among Rung 3's candidates without asking again."""
+    if approval is None or approval.rung != _MODEL_RUNG:
+        return None
+    return SignatureMatch(approval.identity_signature, by_identity=scrubber)
 
 
 def _apply(progress: StepProgress, stop: HealStop) -> None:

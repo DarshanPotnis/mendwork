@@ -1,59 +1,70 @@
 """``mendwork run``: replay a workflow in a real browser and report what happened.
 
 Output channels: progress and the summary (or JSON lines in ``--output json``) go to
-stdout; logs always go to stderr. Exit codes are in ``exit_codes``.
+stdout; logs always go to stderr. Exit codes are in ``exit_codes``. A first Ctrl+C (or SIGTERM)
+stops the run where it is and reports its record; a second aborts at once (``interrupts``).
 """
 
 import asyncio
-import json
 import os
 import sys
-from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, NoReturn, TextIO
 
 import typer
-from pydantic import ValidationError
 
 from mendwork.adapters.artifacts_local.store import LocalArtifactStore
 from mendwork.adapters.browser_playwright.launcher import ChromiumLauncher
 from mendwork.adapters.events_jsonl.sink import JsonLinesEventSink
-from mendwork.adapters.secrets_env.naming import secret_variable_name
+from mendwork.adapters.system.clock import SystemClock
+from mendwork.adapters.system.resolver import SystemHostResolver
 from mendwork.adapters.workflow_yaml.codec import WorkflowYamlCodec
 from mendwork.apps.cli.arguments import parse_input_arguments
+from mendwork.apps.cli.commands import (
+    ArtifactsOption,
+    OutputMode,
+    OutputOption,
+    error_json,
+    process_scrubber,
+    report_egress,
+    report_error,
+    report_inputs,
+    report_interrupted,
+    report_run,
+    report_secrets,
+    result_line,
+    settings_or_exit,
+)
 from mendwork.apps.cli.exit_codes import ExitCode, exit_code_for
-from mendwork.apps.cli.human_output import HumanProgress, render_summary
-from mendwork.apps.cli.validate import format_issue, format_problems, read_limited
+from mendwork.apps.cli.human_output import HumanProgress
+from mendwork.apps.cli.interrupts import RunInterrupts, RunWitness, abort_run
+from mendwork.apps.cli.validate import format_problems, read_limited
 from mendwork.apps.cli.wiring import (
     USAGE_DIRECTORY,
     build_replayer,
+    egress_enforcement,
     launch_options,
     model_client,
     model_rung,
     session_options,
 )
-from mendwork.engine.domain.identifiers import SecretName
-from mendwork.engine.domain.runs import Run
 from mendwork.engine.domain.workflow import WorkflowVersion
 from mendwork.engine.errors import (
+    EgressBlocked,
     InfrastructureError,
-    MendworkError,
     RunInputError,
     SecretUnavailable,
     WorkflowValidationError,
 )
 from mendwork.engine.ports.events import EventSink
+from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.settings import Settings
 
-
-class OutputMode(StrEnum):
-    """How ``mendwork run`` reports on stdout."""
-
-    HUMAN = "human"
-    JSON = "json"
+__all__ = ["OutputMode", "run"]
 
 
 def run(
+    ctx: typer.Context,
     workflow: Annotated[
         Path,
         typer.Argument(exists=True, dir_okay=False, readable=True, help="Workflow YAML file."),
@@ -77,21 +88,12 @@ def run(
             help="Pause after every browser operation, so recordings show each action.",
         ),
     ] = None,
-    artifacts_dir: Annotated[
-        Path | None,
-        typer.Option("--artifacts-dir", file_okay=False, help="Where run artifacts are written."),
-    ] = None,
-    output: Annotated[
-        OutputMode,
-        typer.Option("--output", case_sensitive=False, help="human (default) or json lines."),
-    ] = OutputMode.HUMAN,
+    artifacts_dir: ArtifactsOption = None,
+    output: OutputOption = OutputMode.HUMAN,
 ) -> None:
     """Replay a workflow, verifying every step; stop safely with evidence when unsure."""
     stdout, stderr = sys.stdout, sys.stderr
-    try:
-        settings = Settings()
-    except ValidationError as error:
-        _invalid(output, stdout, stderr, "InvalidSettings", f"invalid configuration: {error}")
+    settings = settings_or_exit(output, stdout, stderr)
     version = _load(workflow, settings, output, stdout, stderr)
     try:
         supplied = parse_input_arguments(inputs or [])
@@ -110,6 +112,7 @@ def run(
             source=str(workflow),
             stdout=stdout,
             stderr=stderr,
+            scrubber=process_scrubber(ctx),
         )
     )
     raise typer.Exit(code=code)
@@ -128,18 +131,29 @@ async def _replay(
     source: str,
     stdout: TextIO,
     stderr: TextIO,
+    scrubber: SecretScrubber,
 ) -> int:
     runs_directory = artifacts.runs_root
-    events: EventSink = (
+    sink: EventSink = (
         JsonLinesEventSink(stdout)
         if output is OutputMode.JSON
         else HumanProgress(stdout, runs_directory)
     )
+    witness = RunWitness(sink)
+    clock = SystemClock()
+    interrupts = RunInterrupts(
+        abort=lambda: abort_run(
+            artifacts, witness.run_id, clock=clock, stderr=stderr, exit_process=os._exit
+        )
+    )
+    resolver = SystemHostResolver()
     launcher = ChromiumLauncher(
-        launch_options(settings, headed=headed, slow_mo_ms=slow_mo_ms), session_options(settings)
+        launch_options(settings, headed=headed, slow_mo_ms=slow_mo_ms),
+        session_options(settings),
+        egress_enforcement(settings, resolver),
     )
     try:
-        async with launcher, model_client(settings) as client:
+        async with interrupts.connected(), launcher, model_client(settings) as client:
             model = (
                 model_rung(settings, client=client, ledger_directory=usage_directory)
                 if client is not None
@@ -149,22 +163,35 @@ async def _replay(
                 settings,
                 launcher=launcher,
                 artifacts=artifacts,
-                events=events,
+                events=witness,
                 environ=os.environ,
+                egress=settings.egress_policy(),
+                resolver=resolver,
+                scrubber=scrubber,
                 model=model,
             )
-            finished = await replayer.run(version, supplied)
+            task = asyncio.ensure_future(replayer.run(version, supplied))
+            interrupts.watch(task.cancel)
+            try:
+                finished = await task
+            except asyncio.CancelledError:
+                if not interrupts.interrupted:
+                    raise
+                return report_interrupted(artifacts, witness.run_id, output, stdout, stderr)
     except RunInputError as error:
-        _report_inputs(error, source, output, stdout, stderr)
+        report_inputs(error, source, output, stdout, stderr)
         return ExitCode.INVALID
     except SecretUnavailable as error:
-        _report_secrets(error, output, stdout, stderr)
+        report_secrets(error, output, stdout, stderr)
+        return ExitCode.INVALID
+    except EgressBlocked as error:
+        report_egress(error, output, stdout, stderr)
         return ExitCode.INVALID
     except InfrastructureError as error:
-        _report_error(error, ExitCode.INFRASTRUCTURE, output, stdout, stderr)
+        report_error(error, ExitCode.INFRASTRUCTURE, output, stdout, stderr)
         return ExitCode.INFRASTRUCTURE
     code = exit_code_for(finished)
-    _report_run(finished, code, runs_directory, output, stdout)
+    report_run(finished, code, runs_directory, output, stdout)
     return code
 
 
@@ -179,74 +206,12 @@ def _load(
     except WorkflowValidationError as error:
         stderr.write(format_problems(source, error) + "\n")
         if output is OutputMode.JSON:
-            _result_line(stdout, ExitCode.INVALID, error=_error_json(error))
+            result_line(stdout, ExitCode.INVALID, error=error_json(error))
         raise typer.Exit(code=ExitCode.INVALID) from None
-
-
-def _report_run(
-    run: Run, code: int, runs_directory: Path, output: OutputMode, stdout: TextIO
-) -> None:
-    if output is OutputMode.JSON:
-        _result_line(stdout, code, run=json.loads(run.model_dump_json()))
-    else:
-        stdout.write(render_summary(run, runs_directory) + "\n")
-    stdout.flush()
 
 
 def _invalid_inputs(
     error: RunInputError, source: str, output: OutputMode, stdout: TextIO, stderr: TextIO
 ) -> NoReturn:
-    _report_inputs(error, source, output, stdout, stderr)
+    report_inputs(error, source, output, stdout, stderr)
     raise typer.Exit(code=ExitCode.INVALID)
-
-
-def _report_inputs(
-    error: RunInputError, source: str, output: OutputMode, stdout: TextIO, stderr: TextIO
-) -> None:
-    lines = [f"{source}: invalid run inputs"]
-    lines.extend(format_issue(source, issue) for issue in error.issues)
-    stderr.write("\n".join(lines) + "\n")
-    if output is OutputMode.JSON:
-        _result_line(stdout, ExitCode.INVALID, error=_error_json(error))
-
-
-def _report_secrets(
-    error: SecretUnavailable, output: OutputMode, stdout: TextIO, stderr: TextIO
-) -> None:
-    names = error.context.get("names")
-    listed = [str(name) for name in names] if isinstance(names, list) else []
-    lines = [error.message]
-    lines.extend(f"  set {secret_variable_name(SecretName(name))}" for name in listed)
-    stderr.write("\n".join(lines) + "\n")
-    if output is OutputMode.JSON:
-        _result_line(stdout, ExitCode.INVALID, error=_error_json(error))
-
-
-def _report_error(
-    error: MendworkError, code: ExitCode, output: OutputMode, stdout: TextIO, stderr: TextIO
-) -> None:
-    stderr.write(f"{type(error).__name__}: {error.message}\n")
-    if output is OutputMode.JSON:
-        _result_line(stdout, code, error=_error_json(error))
-
-
-def _invalid(
-    output: OutputMode, stdout: TextIO, stderr: TextIO, error_type: str, message: str
-) -> NoReturn:
-    stderr.write(message + "\n")
-    if output is OutputMode.JSON:
-        _result_line(stdout, ExitCode.INVALID, error={"type": error_type, "message": message})
-    raise typer.Exit(code=ExitCode.INVALID)
-
-
-def _error_json(error: MendworkError) -> dict[str, object]:
-    report: dict[str, object] = {"type": type(error).__name__, "message": error.message}
-    issues = getattr(error, "issues", ())
-    if issues:
-        report["issues"] = [{"path": issue.path, "message": issue.message} for issue in issues]
-    return report
-
-
-def _result_line(stdout: TextIO, code: int, **fields: object) -> None:
-    stdout.write(json.dumps({"result_version": 1, "exit_code": code, **fields}) + "\n")
-    stdout.flush()

@@ -12,7 +12,8 @@ segment), so the page is rebuilt by:
    with every checkpoint passing again.
 
 Restoring is refused when it would replay an irreversible step. Any failure along the way
-means the state could not be restored, and the step abstains; nothing is retried blindly.
+means the state could not be restored, and the step abstains; nothing is retried blindly. The
+re-opened URL is held to the run's egress policy like any other navigation.
 """
 
 from collections.abc import Awaitable, Callable
@@ -32,6 +33,7 @@ from mendwork.engine.ports.timer import Timer
 from mendwork.engine.replay.config import ReplayConfig
 from mendwork.engine.replay.deadlines import Deadline
 from mendwork.engine.replay.navigation import navigate_with_retry
+from mendwork.engine.replay.navigation_guard import NavigationGuard
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 
 ReplayStep = Callable[[StepStart, Deadline], Awaitable[None]]
@@ -59,6 +61,7 @@ class StateRestorer:
         *,
         browser: BrowserPort,
         state: RunHealState,
+        guard: NavigationGuard,
         config: ReplayConfig,
         timer: Timer,
         randomness: RandomSource,
@@ -68,6 +71,7 @@ class StateRestorer:
     ) -> None:
         self._browser = browser
         self._state = state
+        self._guard = guard
         self._config = config
         self._timer = timer
         self._randomness = randomness
@@ -133,6 +137,7 @@ class StateRestorer:
         await navigate_with_retry(
             self._browser,
             first.url,
+            guard=self._guard,
             policy=config.retry,
             navigation_timeout_ms=config.navigation_timeout_ms,
             deadline=deadline,

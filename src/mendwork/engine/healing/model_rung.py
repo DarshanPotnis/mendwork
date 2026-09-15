@@ -36,9 +36,11 @@ class ModelRung:
     limits: BudgetLimits
     ledger: UsageLedger
 
-    def for_run(self, clock: Clock) -> "ModelChooser":
-        """A chooser with a fresh budget for one run."""
-        budget = RunModelBudget(limits=self.limits, ledger=self.ledger, clock=clock)
+    def for_run(self, clock: Clock, *, reserved: int = 0) -> "ModelChooser":
+        """A chooser with the run's own budget; a resumed run counts its earlier calls."""
+        budget = RunModelBudget(
+            limits=self.limits, ledger=self.ledger, clock=clock, reserved=reserved
+        )
         return ModelChooser(model=self.model, config=self.config, budget=budget)
 
 

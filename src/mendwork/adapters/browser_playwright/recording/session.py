@@ -10,6 +10,7 @@ from typing import Final
 from playwright.async_api import ElementHandle, JSHandle, Page
 from playwright.async_api import Error as PlaywrightError
 
+from mendwork.adapters.browser_playwright.egress.log import EgressLog
 from mendwork.adapters.browser_playwright.errors import (
     browser_closed,
     is_closed,
@@ -69,7 +70,11 @@ class PlaywrightRecordingSession(PlaywrightSession):
         navigation: NavigationLog,
         load_timeout_ms: int,
     ) -> None:
-        super().__init__(page=page, scripts=scripts, observations=observations, tracer=tracer)
+        # A person drives a recording's browser, so it has no egress gateway and its log stays
+        # empty; the recording's verification replay is held to the policy.
+        super().__init__(
+            page=page, scripts=scripts, observations=observations, tracer=tracer, egress=EgressLog()
+        )
         self._channel = channel
         self._navigation = navigation
         self._load_timeout_ms = load_timeout_ms

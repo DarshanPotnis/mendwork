@@ -18,6 +18,13 @@ is the same one the browser tests use (`mendwork.apps.portal.server`). It serves
 `text/javascript`, sends no-cache headers, and disables directory listings. The portal makes
 no external requests: no CDNs and no web fonts.
 
+Mendwork's egress policy refuses loopback addresses (ADR 0011), so to run a workflow against the
+portal, exempt its exact origin, which only works outside production:
+
+```sh
+export MENDWORK_EGRESS_LOOPBACK_EXCEPTIONS='["127.0.0.1:8765"]'
+```
+
 **Demo credentials** (fictional): `buyer@harborline.test` / `harbor-demo`.
 
 ## Pages and logical targets

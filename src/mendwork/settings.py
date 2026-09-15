@@ -27,6 +27,7 @@ from mendwork.adapters.secrets_env.naming import (
 from mendwork.engine.domain.heals import FeatureName
 from mendwork.engine.healing.config import acceptance_problems
 from mendwork.engine.safety.redaction import DEFAULT_SENSITIVE_KEY_FRAGMENTS
+from mendwork.settings_egress import EgressSettings
 from mendwork.settings_model import ModelSettings
 
 ENV_PREFIX: Final = "MENDWORK_"
@@ -180,11 +181,12 @@ class _OwnDotEnvSource(PydanticBaseSettingsSource):
         }
 
 
-class Settings(ModelSettings):
+class Settings(EgressSettings, ModelSettings):
     """Runtime configuration for every Mendwork process.
 
-    Rung 3's model provider settings are declared in ``settings_model`` and read here with the
-    same prefix, sources, and checks as every other setting.
+    Rung 3's model provider settings are declared in ``settings_model``, and the egress policy's
+    in ``settings_egress``; both are read here with the same prefix, sources, and checks as every
+    other setting.
     """
 
     model_config = SettingsConfigDict(
@@ -324,6 +326,17 @@ class Settings(ModelSettings):
         if problem is not None:
             raise ValueError(problem)
         return data
+
+    @model_validator(mode="after")
+    def _no_loopback_exceptions_in_production(self) -> Self:
+        # Loopback in a production worker reaches the worker's own services; the exceptions exist
+        # only so local test targets such as the chaos portal can be automated.
+        if self.environment is Environment.PRODUCTION and self.egress_loopback_exceptions:
+            raise ValueError(
+                "MENDWORK_EGRESS_LOOPBACK_EXCEPTIONS must be empty in production: loopback "
+                "exceptions exist only for local test targets"
+            )
+        return self
 
     @model_validator(mode="after")
     def _retry_delays_are_ordered(self) -> Self:

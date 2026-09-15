@@ -198,6 +198,12 @@ changed the design, and each is easy to get wrong again.
     fast suite had 1,545 tests. `make check` took 63.13 s in the foreground on a loaded
     machine (swap 7.2 of 8 GB, Chrome open). pytest took 59.29 s with branch coverage and
     49.81 s without; the coverage ratchet alone took 9.39 s.
+  - *Baseline on a quiet machine* (Phase 6 tree, 2026-09-14): rebooted, Chrome and VS Code not
+    running, load average 1.9. `make check` took 59.41 s and 58.38 s; `make check-all` took
+    161.41 s and 161.07 s. That leaves about 21 s and 39 s of headroom. An earlier attempt 10
+    minutes after a reboot measured `make check` at 67.78 s while Chrome was open (macOS reopens
+    apps at login) and Spotlight was still indexing, so a measurement starts by confirming the
+    machine is quiet, not by assuming it.
   - *What the budget protects.* The number was never the invariant. Two properties are:
     every test `make check` skips still runs in `make check-all` and CI, so the fast loop
     hides nothing CI would catch; and the coverage ratchet stays in `make check`, because it

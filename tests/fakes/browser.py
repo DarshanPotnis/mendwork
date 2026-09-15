@@ -39,6 +39,8 @@ from mendwork.engine.ports.browser_types import (
 )
 from mendwork.engine.ports.candidate_types import CandidateQuery, CandidateScan, LiveCandidate
 from mendwork.engine.ports.element_types import ElementFacts
+from mendwork.engine.safety.egress import EgressPolicy
+from mendwork.engine.safety.egress_blocks import EgressBlock
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 from tests.fakes.timer import FakeTimer
 
@@ -103,6 +105,8 @@ class FakeBrowser:
     masks: list[tuple[Selector, ...]] = field(default_factory=list)
     released: list[ElementRef] = field(default_factory=list)
     opened_pages: int = 0
+    egress_blocks: list[EgressBlock] = field(default_factory=list)
+    """Refusals the next check reports, as the adapter's gateway or document filter would."""
     epoch: int = 0
     document: int = 0
     _refs: dict[ElementRef, str] = field(default_factory=dict)
@@ -157,6 +161,10 @@ class FakeBrowser:
     async def take_opened_pages(self) -> int:
         opened, self.opened_pages = self.opened_pages, 0
         return opened
+
+    async def take_egress_blocks(self) -> tuple[EgressBlock, ...]:
+        blocks, self.egress_blocks = tuple(self.egress_blocks), []
+        return blocks
 
     async def wait_until_settled(self, *, quiet_frames: int, timeout_ms: int) -> Settling:
         self.calls.append("settle")
@@ -356,13 +364,15 @@ class FakeLauncher:
     browser: FakeBrowser
     error: MendworkError | None = None
     sessions: list[RunId] = field(default_factory=list)
+    policies: list[EgressPolicy] = field(default_factory=list)
     closed: list[RunId] = field(default_factory=list)
 
     @asynccontextmanager
-    async def session(self, run_id: RunId) -> AsyncIterator[FakeBrowser]:
+    async def session(self, run_id: RunId, egress: EgressPolicy) -> AsyncIterator[FakeBrowser]:
         if self.error is not None:
             raise self.error
         self.sessions.append(run_id)
+        self.policies.append(egress)
         try:
             yield self.browser
         finally:

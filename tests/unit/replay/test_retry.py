@@ -87,6 +87,7 @@ async def navigate(
     return await navigate_with_retry(
         browser,
         URL,
+        guard=None,
         policy=policy,
         navigation_timeout_ms=3_000,
         deadline=Deadline.after(timer, deadline_ms),

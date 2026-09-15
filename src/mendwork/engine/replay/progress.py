@@ -29,6 +29,9 @@ class StepProgress:
     target: TargetEvidence | None = None
     navigation: NavigationReport | None = None
     action_performed: bool = False
+    dispatching: bool = False
+    """Whether the action is being sent to the page right now; if the run is interrupted then,
+    whether it arrived is unknown."""
     checkpoints: list[CheckpointResult] = field(default_factory=list)
     download: ArtifactName | None = None
     pinned: list[ElementRef] = field(default_factory=list)
@@ -38,6 +41,8 @@ class StepProgress:
     healed_rung: HealedRung | None = None
     abstention: AbstentionReason | None = None
     proposal: HealProposal | None = None
+    approval: HealProposal | None = None
+    """For an approved step as its run resumes: a heal may act only on this proposal's element."""
 
     def heal_report(self) -> HealReport | None:
         """What the heal ladder did for this step, if it ran."""

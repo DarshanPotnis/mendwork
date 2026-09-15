@@ -10,12 +10,15 @@ from typing import Annotated
 import typer
 from pydantic import ValidationError
 
+from mendwork.apps.cli.approvals import approve, reject
 from mendwork.apps.cli.exit_codes import ExitCode
 from mendwork.apps.cli.record import build_record_command
 from mendwork.apps.cli.record_runtime import production_dependencies
 from mendwork.apps.cli.run import run
 from mendwork.apps.cli.schema import schema
+from mendwork.apps.cli.show import show
 from mendwork.apps.cli.validate import validate
+from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.observability import configure_logging
 from mendwork.settings import Settings
 
@@ -27,6 +30,9 @@ app = typer.Typer(
 app.command()(validate)
 app.command()(schema)
 app.command()(run)
+app.command()(show)
+app.command()(approve)
+app.command()(reject)
 app.command(name="record")(build_record_command(production_dependencies()))
 
 
@@ -38,6 +44,7 @@ def _print_version(requested: bool) -> None:
 
 @app.callback()
 def main(
+    ctx: typer.Context,
     version: Annotated[
         bool,
         typer.Option(
@@ -54,4 +61,8 @@ def main(
     except ValidationError as error:
         typer.echo(f"invalid configuration: {error}", err=True)
         raise typer.Exit(code=ExitCode.INVALID) from None
-    configure_logging(settings)
+    # One scrubber for the whole process: commands register every secret they resolve with it,
+    # and the log pipeline removes those values from every line it writes.
+    scrubber = SecretScrubber()
+    configure_logging(settings, scrubber)
+    ctx.obj = scrubber

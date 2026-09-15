@@ -35,6 +35,8 @@ async def capture_start(context: CaptureContext, url: str, *, taken: Collection[
         await navigate_with_retry(
             context.browser,
             url,
+            # A person drives a recording's browser; the verification replay is held to egress.
+            guard=None,
             policy=retry,
             navigation_timeout_ms=config.navigation_timeout_ms,
             deadline=Deadline.after(context.timer, budget),

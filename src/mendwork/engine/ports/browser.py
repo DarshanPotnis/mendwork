@@ -3,7 +3,7 @@
 The engine decides; the adapter observes and acts. Which selector wins, whether an
 identity drifted, what a checkpoint means, and how long to wait are all engine decisions
 made from these primitives. The adapter pins elements, runs page scripts, listens for
-events, and keeps secrets out of its own tooling.
+events, keeps secrets out of its own tooling, and enforces the run's egress policy.
 """
 
 from collections.abc import Sequence
@@ -32,14 +32,22 @@ from mendwork.engine.ports.browser_types import (
 )
 from mendwork.engine.ports.candidate_types import CandidateQuery, CandidateScan
 from mendwork.engine.ports.element_types import ElementFacts
+from mendwork.engine.safety.egress import EgressPolicy
+from mendwork.engine.safety.egress_blocks import EgressBlock
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 
 
 class BrowserLauncher(Protocol):
     """Opens one isolated browser session per run: its own cookies, storage, and downloads."""
 
-    def session(self, run_id: RunId) -> AbstractAsyncContextManager["BrowserPort"]:
-        """A session for one run, closed when the context exits."""
+    def session(
+        self, run_id: RunId, egress: EgressPolicy
+    ) -> AbstractAsyncContextManager["BrowserPort"]:
+        """A session for one run, held to the run's egress policy, closed when the context exits.
+
+        Every document request and every connection the session's browser makes is checked
+        against the policy, redirect hops included (ADR 0011).
+        """
         ...
 
 
@@ -50,7 +58,8 @@ class BrowserPort(Protocol):
         """Load a URL and wait for its load event.
 
         Raises NavigationError with ``reason`` (a network error code, ``timeout``) and no
-        retry of its own: retrying is the engine's decision.
+        retry of its own: retrying is the engine's decision. Raises EgressBlocked when the
+        egress policy refused the page or a redirect on the way to it.
         """
         ...
 
@@ -64,6 +73,10 @@ class BrowserPort(Protocol):
 
     async def take_opened_pages(self) -> int:
         """How many tabs or windows opened since the last call; they are closed."""
+        ...
+
+    async def take_egress_blocks(self) -> tuple[EgressBlock, ...]:
+        """Navigations and connections the egress policy refused since the last call."""
         ...
 
     async def wait_until_settled(self, *, quiet_frames: int, timeout_ms: int) -> Settling:

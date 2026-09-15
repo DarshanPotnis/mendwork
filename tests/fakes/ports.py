@@ -1,6 +1,7 @@
-"""In-memory ArtifactStore, EventSink, SecretResolver, RandomSource, and RunIdGenerator."""
+"""In-memory ArtifactStore, RunRecords, EventSink, SecretResolver, RandomSource, and RunIds."""
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from pydantic import SecretStr, TypeAdapter
@@ -8,23 +9,30 @@ from pydantic import SecretStr, TypeAdapter
 from mendwork.engine.domain.events import RunEvent
 from mendwork.engine.domain.identifiers import SecretName
 from mendwork.engine.domain.runs import ArtifactName, Run, RunId, parse_run_id
-from mendwork.engine.errors import ArtifactStoreUnavailable, SecretUnavailable
+from mendwork.engine.errors import (
+    ArtifactStoreUnavailable,
+    RunBusy,
+    SecretUnavailable,
+    UnknownRun,
+)
 
 RUN_EVENT: TypeAdapter[RunEvent] = TypeAdapter(RunEvent)
 
 
 class InMemoryArtifactStore:
-    """Keeps written bytes and adopted file paths per run."""
+    """Keeps written bytes and adopted file paths per run, and every write in order."""
 
     def __init__(self, *, fail: bool = False) -> None:
         self.files: dict[tuple[RunId, ArtifactName], bytes] = {}
         self.adopted: dict[tuple[RunId, ArtifactName], Path] = {}
+        self.writes: list[tuple[RunId, ArtifactName, bytes]] = []
         self.fail = fail
 
     async def write(self, run_id: RunId, name: ArtifactName, data: bytes) -> ArtifactName:
         if self.fail:
             raise ArtifactStoreUnavailable("the store is failing on purpose", name=name)
         self.files[(run_id, name)] = data
+        self.writes.append((run_id, name, data))
         return name
 
     async def adopt(self, run_id: RunId, name: ArtifactName, source: Path) -> ArtifactName:
@@ -38,6 +46,49 @@ class InMemoryArtifactStore:
 
     def run_record(self, run_id: RunId) -> Run:
         return Run.model_validate_json(self.files[(run_id, ArtifactName("run.json"))])
+
+    def record_writes(self, run_id: RunId) -> list[Run]:
+        """Every version of the run's record, in the order it was written."""
+        return [
+            Run.model_validate_json(data)
+            for run, name, data in self.writes
+            if run == run_id and name == "run.json"
+        ]
+
+
+class InMemoryRunRecords:
+    """Claims held in memory, and records read back from an in-memory store."""
+
+    def __init__(self, store: InMemoryArtifactStore | None = None) -> None:
+        self.store = store or InMemoryArtifactStore()
+        self.held: set[RunId] = set()
+        self.claimed: list[RunId] = []
+
+    @asynccontextmanager
+    async def claim(self, run_id: RunId) -> AsyncIterator[None]:
+        if run_id in self.held:
+            raise RunBusy(f"run {run_id} is being run or resumed by another process")
+        self.held.add(run_id)
+        self.claimed.append(run_id)
+        try:
+            yield
+        finally:
+            self.held.discard(run_id)
+
+    async def is_claimed(self, run_id: RunId) -> bool:
+        return run_id in self.held
+
+    async def load_run(self, run_id: RunId) -> Run:
+        data = self.store.files.get((run_id, ArtifactName("run.json")))
+        if data is None:
+            raise UnknownRun(f"no run {run_id}", run_id=run_id)
+        return Run.model_validate_json(data)
+
+    async def load_workflow(self, run_id: RunId) -> bytes:
+        data = self.store.files.get((run_id, ArtifactName("workflow.json")))
+        if data is None:
+            raise UnknownRun(f"no workflow snapshot for run {run_id}", run_id=run_id)
+        return data
 
 
 class RecordingEventSink:

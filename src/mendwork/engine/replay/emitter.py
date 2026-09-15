@@ -13,6 +13,7 @@ from mendwork.engine.domain.events import (
     HealAttemptedEvent,
     HealVerifiedEvent,
     RunFinishedEvent,
+    RunResumedEvent,
     RunStartedEvent,
     StateRestoredEvent,
     StepFailedEvent,
@@ -20,7 +21,7 @@ from mendwork.engine.domain.events import (
     StepSucceededEvent,
     TargetResolvedEvent,
 )
-from mendwork.engine.domain.heals import HealAttemptReport, RecoveryReport
+from mendwork.engine.domain.heals import HealAttemptReport, HealProposal, RecoveryReport
 from mendwork.engine.domain.identifiers import StepId
 from mendwork.engine.domain.runs import (
     CheckpointResult,
@@ -39,11 +40,18 @@ from mendwork.engine.ports.events import EventSink
 class RunEmitter:
     """Builds each event type from the run's own records and sends it to the sink."""
 
-    def __init__(self, sink: EventSink, clock: Clock, run_id: RunId) -> None:
+    def __init__(
+        self, sink: EventSink, clock: Clock, run_id: RunId, *, last_sequence: int = 0
+    ) -> None:
         self._sink = sink
         self._clock = clock
         self._run_id = run_id
-        self._sequence = 0
+        self._sequence = last_sequence
+
+    @property
+    def sequence(self) -> int:
+        """The sequence number of the last event sent; a resume continues after it."""
+        return self._sequence
 
     def _next(self) -> int:
         self._sequence += 1
@@ -61,6 +69,25 @@ class RunEmitter:
                 step_count=len(workflow.steps),
                 input_names=tuple(declaration.name for declaration in workflow.inputs),
                 secret_names=workflow.secrets,
+            )
+        )
+
+    async def run_resumed(
+        self, workflow: WorkflowVersion, segment: int, proposal: HealProposal
+    ) -> None:
+        """An approval resumed the run."""
+        await self._sink.emit(
+            RunResumedEvent(
+                run_id=self._run_id,
+                sequence=self._next(),
+                at=self._clock.now(),
+                workflow_id=workflow.workflow_id,
+                workflow_version=workflow.version,
+                step_count=len(workflow.steps),
+                segment=segment,
+                proposal_id=proposal.id,
+                step_id=proposal.step_id,
+                index=proposal.step_index,
             )
         )
 

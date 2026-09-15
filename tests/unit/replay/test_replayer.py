@@ -34,9 +34,11 @@ from mendwork.engine.ports.browser_types import (
 from mendwork.engine.replay.replayer import Replayer
 from tests.fakes.browser import Effect, FakeBrowser, FakeElement, FakeLauncher, download
 from tests.fakes.clock import FakeClock
+from tests.fakes.egress import TEST_POLICY, FakeResolver
 from tests.fakes.ports import (
     DictSecretResolver,
     InMemoryArtifactStore,
+    InMemoryRunRecords,
     RecordingEventSink,
     SequenceRandom,
     SequentialRunIds,
@@ -182,6 +184,9 @@ def harness(
         randomness=SequenceRandom([0.0]),
         run_ids=SequentialRunIds(),
         config=config(**overrides),
+        egress=TEST_POLICY,
+        resolver=FakeResolver(),
+        records=InMemoryRunRecords(store),
     )
     return Harness(flow, page, launcher, store, events, replayer)
 
@@ -231,6 +236,7 @@ async def test_the_run_record_is_stored_with_every_step_and_its_evidence() -> No
         "steps/002_fill_email.png",
         "steps/003_fill_password.png",
         "steps/004_export.png",
+        "workflow.json",
     ]
     assert run.steps[3].checkpoints[0].kind == "download_completed"
 

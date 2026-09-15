@@ -50,6 +50,25 @@ class RunStartedEvent(_RunEvent):
     secret_names: tuple[str, ...]
 
 
+class RunResumedEvent(_RunEvent):
+    """A person approved a proposal and the run resumed in a new browser.
+
+    The steps before the approved one are replayed without events to rebuild its page; the
+    approved step's own events follow.
+    """
+
+    type: Literal["run_resumed"] = "run_resumed"
+    workflow_id: WorkflowIdField
+    workflow_version: VersionNumber
+    step_count: int = Field(ge=1)
+    segment: int = Field(ge=2)
+    """Which execution of the run this is, counting from 1."""
+    proposal_id: str
+    step_id: StepIdField
+    """The approved step."""
+    index: int = Field(ge=0)
+
+
 class StepStartedEvent(_StepEvent):
     """A step began."""
 
@@ -148,6 +167,7 @@ class RunFinishedEvent(_RunEvent):
 
 RunEvent = Annotated[
     RunStartedEvent
+    | RunResumedEvent
     | StepStartedEvent
     | TargetResolvedEvent
     | HealAttemptedEvent

@@ -16,11 +16,13 @@ from mendwork.adapters.browser_playwright.recording.channel import LoggingInboun
 from mendwork.adapters.browser_playwright.recording.launcher import ChromiumRecordingLauncher
 from mendwork.adapters.system.clock import SystemClock
 from mendwork.adapters.system.randomness import SystemRandomSource
+from mendwork.adapters.system.resolver import SystemHostResolver
 from mendwork.adapters.system.timer import AsyncioTimer
 from mendwork.apps.cli.human_output import HumanProgress, render_summary
 from mendwork.apps.cli.record import RecordDependencies
 from mendwork.apps.cli.wiring import (
     build_replayer,
+    egress_enforcement,
     launch_options,
     record_launch_options,
     recording_options,
@@ -29,6 +31,7 @@ from mendwork.apps.cli.wiring import (
 from mendwork.engine.domain.runs import Run
 from mendwork.engine.domain.workflow import WorkflowVersion
 from mendwork.engine.ports.recording import RecordingLauncher
+from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.settings import Settings
 
 
@@ -96,16 +99,27 @@ async def replay_recording(
     *,
     slow_mo_ms: int | None,
     stdout: TextIO,
+    scrubber: SecretScrubber,
 ) -> Run:
     """Replay a recorded workflow exactly as ``mendwork run --headed`` would."""
     artifacts = LocalArtifactStore(settings.artifacts_dir)
     events = HumanProgress(stdout, artifacts.runs_root)
+    resolver = SystemHostResolver()
     launcher = ChromiumLauncher(
-        launch_options(settings, headed=True, slow_mo_ms=slow_mo_ms), session_options(settings)
+        launch_options(settings, headed=True, slow_mo_ms=slow_mo_ms),
+        session_options(settings),
+        egress_enforcement(settings, resolver),
     )
     async with launcher:
         replayer = build_replayer(
-            settings, launcher=launcher, artifacts=artifacts, events=events, environ=os.environ
+            settings,
+            launcher=launcher,
+            artifacts=artifacts,
+            events=events,
+            environ=os.environ,
+            egress=settings.egress_policy(),
+            resolver=resolver,
+            scrubber=scrubber,
         )
         run = await replayer.run(version, inputs)
     stdout.write(render_summary(run, artifacts.runs_root) + "\n")

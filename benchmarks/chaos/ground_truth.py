@@ -40,6 +40,8 @@ from mendwork.engine.ports.browser_types import (
 )
 from mendwork.engine.ports.candidate_types import CandidateQuery, CandidateScan, LiveCandidate
 from mendwork.engine.ports.element_types import ElementFacts
+from mendwork.engine.safety.egress import EgressPolicy
+from mendwork.engine.safety.egress_blocks import EgressBlock
 from mendwork.engine.safety.secret_scrub import SecretScrubber
 
 DEMO_EMAIL: Final = "buyer@harborline.test"
@@ -155,6 +157,9 @@ class GroundTruthSession:
     async def take_opened_pages(self) -> int:
         return await self._inner.take_opened_pages()
 
+    async def take_egress_blocks(self) -> tuple[EgressBlock, ...]:
+        return await self._inner.take_egress_blocks()
+
     async def wait_until_settled(self, *, quiet_frames: int, timeout_ms: int) -> Settling:
         return await self._inner.wait_until_settled(
             quiet_frames=quiet_frames, timeout_ms=timeout_ms
@@ -246,8 +251,10 @@ class GroundTruthLauncher:
     signed_in: bool
 
     @asynccontextmanager
-    async def session(self, run_id: RunId) -> AsyncIterator[GroundTruthSession]:
-        async with self.inner.session(run_id) as session:
+    async def session(
+        self, run_id: RunId, egress: EgressPolicy
+    ) -> AsyncIterator[GroundTruthSession]:
+        async with self.inner.session(run_id, egress) as session:
             if self.signed_in:
                 await session.page.add_init_script(script=_SIGNED_IN)
             try:

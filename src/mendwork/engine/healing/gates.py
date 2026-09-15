@@ -1,8 +1,9 @@
 """The gates an accepted heal passes before anything acts on it.
 
 In order: the step must have a checkpoint that can prove the heal; an irreversible step never
-acts on a heal and stops with a proposal instead; and the step must be within its heal attempt
-limit, which is one for an authentication step. Each gate returns why the heal stops, or None.
+acts on a heal and stops with a proposal instead, unless a person approved exactly this element;
+and the step must be within its heal attempt limit, which is one for an authentication step. Each
+gate returns why the heal stops, or None.
 
 The gates whose answer does not depend on which element is chosen are also checked before a
 model is asked (``before_asking``), so no call is spent on a step that could not act anyway.
@@ -12,9 +13,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from mendwork.engine.domain.enums import RiskLevel
-from mendwork.engine.domain.heals import AbstentionReason, HealProposal
+from mendwork.engine.domain.heals import AbstentionReason, HealProposal, ProposalBox
 from mendwork.engine.domain.steps import Step
 from mendwork.engine.errors import ApprovalRequired, HealAbstained, MendworkError
+from mendwork.engine.healing.candidates import approved_identity
 from mendwork.engine.healing.config import HealingConfig
 from mendwork.engine.healing.context import AcceptedHeal
 from mendwork.engine.safety.heal_policy import authentication_step, is_verifiable
@@ -28,6 +30,22 @@ class HealStop:
     error: MendworkError
     abstention: AbstentionReason | None = None
     proposal: HealProposal | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GateContext:
+    """Where the heal is, and what the gates judge it by."""
+
+    index: int
+    """The step's position in the workflow, for a proposal."""
+    proposal_number: int
+    """The number a proposal made now would take: one more than the run has made."""
+    approved: bool
+    """A person approved this exact element for the step, so the irreversible gate is passed."""
+    used: int
+    config: HealingConfig
+    may_act: Callable[[RiskLevel], bool]
+    scrubber: SecretScrubber
 
 
 def before_asking(step: Step, *, used: int, config: HealingConfig) -> AbstentionReason | None:
@@ -49,15 +67,7 @@ def before_asking(step: Step, *, used: int, config: HealingConfig) -> Abstention
     return AbstentionReason.ATTEMPTS_EXHAUSTED
 
 
-def before_acting(
-    step: Step,
-    accepted: AcceptedHeal,
-    *,
-    used: int,
-    config: HealingConfig,
-    may_act: Callable[[RiskLevel], bool],
-    scrubber: SecretScrubber,
-) -> HealStop | None:
+def before_acting(step: Step, accepted: AcceptedHeal, gate: GateContext) -> HealStop | None:
     """The first gate that stops an accepted heal, or None when it may be acted on."""
     if not is_verifiable(step):
         return HealStop(
@@ -70,25 +80,45 @@ def before_acting(
             ),
             abstention=AbstentionReason.UNVERIFIABLE,
         )
-    if not may_act(step.risk):
-        proposal = HealProposal(
-            rung=accepted.rung,
-            candidate=accepted.proposal_candidate(scrubber),
-            margin=accepted.report.margin,
-            reason="the step is irreversible, so a healed target needs a person's approval "
-            "before anything acts on it",
-            model=accepted.report.model,
-        )
+    if not gate.approved and not gate.may_act(step.risk):
+        proposal = heal_proposal(step, accepted, gate)
         error = ApprovalRequired(
             "a heal was found for this irreversible step; nothing acts on it without a "
             "person's approval",
             reason="irreversible_step",
+            proposal_id=proposal.id,
             rung=accepted.rung,
             score=accepted.scored.score,
             margin=accepted.report.margin,
         )
         return HealStop(error, proposal=proposal)
-    return over_limit(step, accepted, used=used, config=config)
+    return over_limit(step, accepted, used=gate.used, config=gate.config)
+
+
+def heal_proposal(step: Step, accepted: AcceptedHeal, gate: GateContext) -> HealProposal:
+    """The proposal a person decides on: the element, every number the decision used, and where
+    the element sat, which is shown but never matched (ADR 0011)."""
+    box = accepted.scored.candidate.facts.box
+    report = accepted.report
+    return HealProposal(
+        id=f"{step.id}-{gate.proposal_number}",
+        step_id=step.id,
+        step_index=gate.index,
+        rung=accepted.rung,
+        candidate=accepted.proposal_candidate(gate.scrubber),
+        identity_signature=approved_identity(accepted.scored.signature, gate.scrubber),
+        box=(
+            ProposalBox(x=box.x, y=box.y, width=box.width, height=box.height)
+            if box is not None
+            else None
+        ),
+        margin=report.margin,
+        threshold=report.threshold,
+        required_margin=report.required_margin,
+        reason="the step is irreversible, so a healed target needs a person's approval before "
+        "anything acts on it",
+        model=report.model,
+    )
 
 
 def over_limit(

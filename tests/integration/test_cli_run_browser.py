@@ -17,6 +17,7 @@ from urllib.parse import quote_plus
 import pytest
 from typer.testing import CliRunner, Result
 
+from benchmarks.chaos.local_egress import local_policy
 from mendwork.adapters.workflow_yaml.codec import WorkflowYamlCodec
 from mendwork.apps.cli.main import app
 from mendwork.apps.portal.server import PortalServer
@@ -34,10 +35,16 @@ LEAK_SECRET: Final = "Zq7-leak/probe &4421 ü"
 
 @pytest.fixture
 def cli_browser() -> Invoke:
-    """Run ``mendwork run`` in-process; it launches its own Chromium each time."""
+    """Run ``mendwork run`` in-process; it launches its own Chromium each time.
+
+    The local servers the run's inputs name are the only loopback origins it may reach.
+    """
 
     def invoke(arguments: list[str], env: dict[str, str]) -> Result:
-        return CliRunner().invoke(app, ["run", *arguments], env=env)
+        values = [argument.split("=", 1)[1] for argument in arguments if "=" in argument]
+        origins = [exception.origin for exception in local_policy(values).loopback_exceptions]
+        egress = {"MENDWORK_EGRESS_LOOPBACK_EXCEPTIONS": json.dumps(origins)}
+        return CliRunner().invoke(app, ["run", *arguments], env={**egress, **env})
 
     return invoke
 

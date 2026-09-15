@@ -391,6 +391,16 @@ Tests: every blocked IP range and scheme; DNS-rebinding-style case (hostname res
 Acceptance: make check passes.
 ```
 
+**As built (ADR 0011).** Playwright request routing was measured not to see redirect hops, so egress is
+enforced by an engine pre-navigation check, a DevTools document filter, and a per-session SOCKS5
+gateway instead; the allowlist denies by default. Approvals add `mendwork show`, a hash-chained
+audit log (`<artifacts>/audit/audit.jsonl`), and a resume that replays the earlier steps in a new
+browser and acts only on the approved element, matched by identity rather than position. Run
+records become version 2 and are journaled; Ctrl+C ends a run `cancelled` (exit 130) or, after an
+irreversible dispatch, `needs_review` (exit 4), and a second Ctrl+C aborts at once. Log lines are
+scrubbed of every secret the process resolved. Time budgets: `make check` under 80 s and
+`make check-all` under 200 s (ADR 0007).
+
 ---
 
 ## Phase 8 — Patcher and version history

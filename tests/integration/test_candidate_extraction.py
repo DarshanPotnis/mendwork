@@ -12,13 +12,19 @@ from typing import Final
 import pytest
 from playwright.async_api import Browser
 
-from mendwork.adapters.browser_playwright.launcher import SessionOptions, open_session
+from mendwork.adapters.browser_playwright.launcher import (
+    EgressEnforcement,
+    SessionOptions,
+    open_session,
+)
 from mendwork.adapters.browser_playwright.scripts import PageScripts
 from mendwork.adapters.browser_playwright.session import PlaywrightSession
 from mendwork.engine.domain.enums import ActionType
 from mendwork.engine.domain.runs import parse_run_id
 from mendwork.engine.errors import TargetNotFound
 from mendwork.engine.ports.candidate_types import CandidateQuery, CandidateScan
+from mendwork.engine.safety.egress import EgressPolicy
+from tests.fakes.egress import FakeResolver
 from tests.unit.replay.builders import selector
 
 pytestmark = [pytest.mark.browser, pytest.mark.asyncio(loop_scope="session")]
@@ -51,7 +57,10 @@ SECRET: Final = "Vault-Passcode-7731!"
 async def session_on(browser: Browser, html: str) -> AsyncIterator[PlaywrightSession]:
     scripts = await asyncio.to_thread(PageScripts.load)
     run_id = parse_run_id("20260913T000000Z-0000cafe")
-    async with open_session(browser, scripts, OPTIONS, run_id) as session:
+    enforcement = EgressEnforcement(resolver=FakeResolver(), timeout_ms=5_000)
+    async with open_session(
+        browser, scripts, OPTIONS, run_id, policy=EgressPolicy(), enforcement=enforcement
+    ) as session:
         await session.page.set_content(html)
         yield session
 

@@ -8,8 +8,13 @@ filter only narrows the list; this module decides which candidates an action acc
 
 A candidate's *signature* is what identifies it across reloads of the same page: a restored
 page has new element handles, but a candidate that failed verification must stay excluded.
+Within one run the page is rebuilt on the same machine, so the signature includes the element's
+position. An approval is matched on the *identity signature* instead, which leaves position out:
+between a pause and an approval, a cookie banner, a viewport, or platform fonts can move an
+element without changing what it is (ADR 0011).
 """
 
+from dataclasses import dataclass
 from typing import Final
 
 from mendwork.engine.domain.enums import ActionType
@@ -17,6 +22,7 @@ from mendwork.engine.domain.fingerprint import Fingerprint
 from mendwork.engine.ports.candidate_types import LiveCandidate
 from mendwork.engine.replay.identity import normalize_name
 from mendwork.engine.safety.heal_kinds import ElementKind, action_accepts, interaction_class
+from mendwork.engine.safety.secret_scrub import SecretScrubber
 
 CandidateSignature = tuple[str, ...]
 _BOX_DECIMALS: Final = 3
@@ -50,7 +56,10 @@ def compatible(action: ActionType, candidate: LiveCandidate) -> bool:
 
 
 def candidate_signature(candidate: LiveCandidate) -> CandidateSignature:
-    """What identifies a candidate on a reloaded page, and orders ties deterministically."""
+    """What identifies a candidate on a reloaded page, and orders ties deterministically.
+
+    The element's position is the last part, so ``identity_signature`` can leave it out.
+    """
     identity = candidate.identity
     facts = candidate.facts
     box = facts.box
@@ -74,3 +83,31 @@ def candidate_signature(candidate: LiveCandidate) -> CandidateSignature:
         " | ".join(facts.nearby_text),
         position,
     )
+
+
+def identity_signature(signature: CandidateSignature) -> CandidateSignature:
+    """A signature without the element's position."""
+    return signature[:-1]
+
+
+def approved_identity(
+    signature: CandidateSignature, scrubber: SecretScrubber
+) -> CandidateSignature:
+    """What a proposal records and an approval must still match: the identity, scrubbed."""
+    return tuple(scrubber.scrub_text(part) for part in identity_signature(signature))
+
+
+@dataclass(frozen=True, slots=True)
+class SignatureMatch:
+    """A remembered element to find again."""
+
+    signature: CandidateSignature
+    by_identity: SecretScrubber | None = None
+    """When set, ``signature`` is an approved identity: a candidate matches on its own identity,
+    scrubbed with this scrubber, wherever the element now sits."""
+
+    def matches(self, other: CandidateSignature) -> bool:
+        """Whether a candidate with this full signature is the remembered element."""
+        if self.by_identity is None:
+            return other == self.signature
+        return approved_identity(other, self.by_identity) == self.signature

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TextIO
 
 from mendwork.apps.portal.server import PortalServer
+from mendwork.engine.safety.secret_scrub import SecretScrubber
 from mendwork.observability import configure_logging
 from mendwork.settings import Settings
 
@@ -35,7 +36,8 @@ def main(
     arguments = parser.parse_args(argv)
 
     settings = Settings()
-    configure_logging(settings)
+    # The portal resolves no secrets, so its scrubber stays empty.
+    configure_logging(settings, SecretScrubber())
     with PortalServer(
         arguments.root, host=settings.portal_host, port=settings.portal_port
     ) as server:
