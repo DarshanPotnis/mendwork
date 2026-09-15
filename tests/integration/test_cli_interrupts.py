@@ -10,10 +10,8 @@ Chromium process may outlive the command.
 import asyncio
 import json
 import os
-import select
 import signal
 import sys
-import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +24,7 @@ from mendwork.adapters.workflow_yaml.codec import WorkflowYamlCodec
 from mendwork.apps.portal.server import PortalServer
 from mendwork.engine.domain.documents import parse_workflow_document
 from mendwork.engine.domain.runs import Run, RunStatus, StepStatus
+from tests.processes import descendants, still_running
 from tests.workflows import REPO_ROOT, Document
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
@@ -154,79 +153,6 @@ async def interrupt(site: str, tmp_path: Path, *, risk: str, signals: int) -> In
         run=Run.model_validate_json((run_directory / "run.json").read_bytes()),
         outlived=await asyncio.to_thread(still_running, started, EXIT_TIMEOUT_S),
     )
-
-
-async def descendants(root: int) -> set[int]:
-    """Every process descended from ``root`` now: the Playwright driver, Chromium, its helpers."""
-    listing = await asyncio.create_subprocess_exec(
-        "ps", "-A", "-o", "pid=,ppid=", stdout=asyncio.subprocess.PIPE
-    )
-    output, _ = await listing.communicate()
-    children: dict[int, set[int]] = {}
-    for row in output.decode().splitlines():
-        pid, parent = (int(field) for field in row.split())
-        children.setdefault(parent, set()).add(pid)
-    found: set[int] = set()
-    frontier = [root]
-    while frontier:
-        for child in children.get(frontier.pop(), set()):
-            if child not in found:
-                found.add(child)
-                frontier.append(child)
-    return found
-
-
-if sys.platform == "linux":
-
-    def still_running(pids: set[int], timeout_s: float) -> set[int]:
-        """The processes that have not exited within the timeout, waited on as exit events."""
-        handles: dict[int, int] = {}
-        for pid in pids:
-            try:
-                handles[os.pidfd_open(pid)] = pid
-            except ProcessLookupError:
-                continue
-        poller = select.poll()
-        for handle in handles:
-            poller.register(handle, select.POLLIN)
-        deadline = time.monotonic() + timeout_s
-        try:
-            waiting = set(handles)
-            while waiting and (remaining := deadline - time.monotonic()) > 0:
-                for handle, _ in poller.poll(remaining * 1000):
-                    poller.unregister(handle)
-                    waiting.discard(handle)
-            return {handles[handle] for handle in waiting}
-        finally:
-            for handle in handles:
-                os.close(handle)
-
-else:
-
-    def still_running(pids: set[int], timeout_s: float) -> set[int]:
-        """The processes that have not exited within the timeout, waited on as exit events."""
-        queue = select.kqueue()
-        try:
-            waiting: set[int] = set()
-            for pid in pids:
-                event = select.kevent(
-                    pid,
-                    filter=select.KQ_FILTER_PROC,
-                    flags=select.KQ_EV_ADD | select.KQ_EV_ONESHOT,
-                    fflags=select.KQ_NOTE_EXIT,
-                )
-                try:
-                    queue.control([event], 0, 0)
-                except ProcessLookupError:
-                    continue
-                waiting.add(pid)
-            deadline = time.monotonic() + timeout_s
-            while waiting and (remaining := deadline - time.monotonic()) > 0:
-                for fired in queue.control(None, len(waiting), remaining):
-                    waiting.discard(fired.ident)
-            return waiting
-        finally:
-            queue.close()
 
 
 @pytest.mark.asyncio

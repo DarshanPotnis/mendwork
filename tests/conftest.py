@@ -1,19 +1,31 @@
-"""Shared fixtures.
+"""Shared fixtures and hooks.
 
 ``configure_logging`` mutates process-wide state (structlog's defaults and the root
 logger), so every test gets it put back to avoid order-dependent runs.
+
+Tests run in four pytest-xdist workers (ADR 0012). The hooks that report across workers live here,
+in the root conftest, because the controller collects no tests and so never loads a conftest
+further down.
 """
 
 import ipaddress
 import logging
 import socket
 from collections.abc import Callable, Iterator
+from typing import Protocol
 
 import click
 import pytest
 import structlog
 from hypothesis import settings
 from typer.testing import Result
+
+from tests.integration.heal_reporting import (
+    HEAL_SUITE_OUTCOMES,
+    WORKER_OUTPUT_KEY,
+    decode_outcomes,
+    summary_lines,
+)
 
 # Deterministic property tests: the same examples on every run and machine, no example
 # database carrying state between runs, and no wall-clock deadline to flake on slow CI.
@@ -54,6 +66,34 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="run only the tests that call the configured model provider (make live-providers)",
     )
+
+
+class FinishedWorker(Protocol):
+    """What the controller reads from a finished pytest-xdist worker, which ships no type hints."""
+
+    workeroutput: dict[str, object]
+    config: pytest.Config
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node: FinishedWorker, error: object) -> None:
+    """A worker finished: keep the heal fixture suite's outcomes if it ran them (ADR 0012)."""
+    data = node.workeroutput.get(WORKER_OUTPUT_KEY)
+    if isinstance(data, str):
+        node.config.stash[HEAL_SUITE_OUTCOMES] = decode_outcomes(data)
+
+
+def pytest_terminal_summary(
+    terminalreporter: pytest.TerminalReporter, exitstatus: int, config: pytest.Config
+) -> None:
+    """Show the heal fixture suite's per-mutation table whenever the suite ran, in any worker."""
+    outcomes = config.stash.get(HEAL_SUITE_OUTCOMES, None)
+    if outcomes is None:
+        return
+    terminalreporter.write_sep("=", "heal fixture suite")
+    verbose = config.get_verbosity() > 0
+    for line in summary_lines(outcomes, verbose=verbose):
+        terminalreporter.write_line(line)
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -101,6 +141,20 @@ def _no_network(pytestconfig: pytest.Config) -> Iterator[None]:
         patch.setattr(socket.socket, "connect", guarded_connect)
         patch.setattr(socket.socket, "connect_ex", guarded_connect_ex)
         patch.setattr(socket, "getaddrinfo", guarded_getaddrinfo)
+        yield
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _default_artifacts_directory(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
+    """A command not given ``--artifacts-dir`` writes under this process's own temporary directory.
+
+    Every pytest-xdist worker has its own base temporary directory, so no two workers can share a
+    default artifacts directory, audit log, or usage ledger, and no test writes the repository's
+    ``artifacts/`` (ADR 0012). Every test that runs a command still passes its own directory.
+    """
+    default = tmp_path_factory.getbasetemp() / "default-artifacts"
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("MENDWORK_ARTIFACTS_DIR", str(default))
         yield
 
 

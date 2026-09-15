@@ -22,7 +22,7 @@ from benchmarks.chaos.heal_cases import (
     run_cases,
 )
 from benchmarks.chaos.heal_pairs import ABSTAIN, ABSTAIN_TABLE_PATH, HEAL, load_table
-from tests.integration.heal_reporting import HEAL_SUITE_OUTCOMES
+from tests.integration.heal_reporting import record_outcomes
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow, pytest.mark.asyncio(loop_scope="session")]
 
@@ -41,7 +41,7 @@ async def heal_suite(
 ) -> Mapping[str, CaseOutcome]:
     directory: Path = tmp_path_factory.mktemp("heal-suite")
     outcomes = await run_cases(browser, portal_url, CASES, WORKFLOWS, directory, model="oracle")
-    request.config.stash[HEAL_SUITE_OUTCOMES] = outcomes
+    record_outcomes(request.config, outcomes)
     return outcomes
 
 

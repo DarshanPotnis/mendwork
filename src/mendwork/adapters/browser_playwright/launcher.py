@@ -9,12 +9,12 @@ policy (ADR 0011). All of it is removed when the run's session closes.
 import asyncio
 import shutil
 import tempfile
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Final, Self
+from typing import Final, Protocol, Self
 
 import structlog
 from playwright.async_api import (
@@ -135,10 +135,7 @@ class ChromiumLauncher:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        if self._browser is not None:
-            await self._browser.close()
-        if self._playwright is not None:
-            await self._playwright.stop()
+        await close_chromium(self._browser, self._playwright)
 
     @asynccontextmanager
     async def session(
@@ -156,6 +153,55 @@ class ChromiumLauncher:
             self._browser, self._options, self._enforcement
         )
         return self._inner
+
+
+class Closable(Protocol):
+    """A browser, as far as closing it goes."""
+
+    async def close(self) -> None:
+        """Close it."""
+        ...
+
+
+class Stoppable(Protocol):
+    """Playwright's driver connection, as far as stopping it goes."""
+
+    async def stop(self) -> None:
+        """Stop it."""
+        ...
+
+
+async def close_chromium(browser: Closable | None, playwright: Stoppable | None) -> None:
+    """Close Chromium, then stop Playwright's driver, even when the driver has already exited.
+
+    The driver runs in the command's process group, so a terminal's Ctrl+C reaches it as well as
+    Mendwork, and on a busy machine it can exit before this runs (ADR 0012). The run's record is
+    final by then, so a close that finds the driver or browser already gone is logged at debug
+    level and the command exits with the code its record gives. Any other failure is raised.
+    """
+    if browser is not None:
+        await close_quietly("browser", browser.close)
+    if playwright is not None:
+        await close_quietly("driver", playwright.stop)
+
+
+async def close_quietly(what: str, close: Callable[[], Awaitable[None]]) -> None:
+    """Run one teardown step, tolerating only a page, context, browser, or driver already gone.
+
+    Session teardown uses it too: when a run is interrupted, a teardown error must not replace the
+    interrupt, or the engine would record an infrastructure failure instead of the cancelled or
+    needs-review status ADR 0011 gives the run (ADR 0012).
+    """
+    try:
+        await close()
+    # Playwright reports its exited driver with a plain Exception, so nothing narrower sees it;
+    # every error that is not a closed connection is raised again.
+    except Exception as error:
+        if not is_closed(error):
+            raise
+        structlog.stdlib.get_logger("mendwork.browser").debug(
+            "chromium_already_closed", closing=what, detail=str(error).strip().splitlines()[0]
+        )
 
 
 async def start_chromium(launch: LaunchOptions) -> tuple[Playwright, Browser]:
@@ -212,13 +258,9 @@ async def open_session(
                     egress=log,
                 )
             finally:
-                await documents.detach()
-                await tracer.stop()
-                try:
-                    await context.close()
-                except PlaywrightError as error:
-                    if not is_closed(error):
-                        raise
+                await close_quietly("document filter", documents.detach)
+                await close_quietly("trace", tracer.stop)
+                await close_quietly("context", context.close)
     finally:
         await asyncio.to_thread(remove_workdir, workdir)
 

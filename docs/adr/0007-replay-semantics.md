@@ -213,6 +213,12 @@ changed the design, and each is easy to get wrong again.
   - *When a budget is exceeded,* the work stops and reports the measurements. Running tests in
     parallel (pytest-xdist) is the structural answer to a slow suite; if it is needed, it is
     decided as its own change with its own ADR, not inside a phase.
+  - *Amended 2026-09-15.* Phase 7 finished with `make check-all` at 211.5 s and 211.3 s on a
+    quiet machine, over the 200 s budget, so parallel test execution was added as its own change
+    (ADR 0012). `make check` and `make check-all` now run pytest in four workers, CI runs the same
+    targets, and both budgets (80 s and 200 s, unchanged) are measured with that configuration.
+    `PYTEST_WORKERS=0` runs serially for debugging; a serial run is not what the budget measures.
+    Both coverage gate sets are unchanged and measure the same figures in either mode.
 - **Two gate sets, and only one is the contract.**
   - `make check-all` (the full suite): engine ≥ 90%, domain ≥ 95%, overall ≥ 85%. **These
     are the coverage contract**, and CI enforces them.

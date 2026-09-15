@@ -1,7 +1,9 @@
 """Browser fixtures: one server and one browser per session, a fresh context per test.
 
-Playwright's driver connection belongs to the event loop that created it, so every
-fixture and test that touches the browser runs on the session loop. See ADR 0005.
+A session is one pytest process: the serial run, or one pytest-xdist worker, each with its own
+server on an OS-assigned port and its own browser (ADR 0005, ADR 0012). Playwright's driver
+connection belongs to the event loop that created it, so every fixture and test that touches the
+browser runs on the session loop.
 """
 
 from collections.abc import AsyncIterator, Iterator
@@ -11,21 +13,7 @@ import pytest_asyncio
 from playwright.async_api import Browser, Playwright, async_playwright
 
 from mendwork.apps.portal.server import PortalServer
-from tests.integration.heal_reporting import HEAL_SUITE_OUTCOMES, summary_lines
 from tests.integration.portal import PORTAL_ROOT, PortalDriver, portal_session
-
-
-def pytest_terminal_summary(
-    terminalreporter: pytest.TerminalReporter, exitstatus: int, config: pytest.Config
-) -> None:
-    """Show the heal fixture suite's per-mutation table whenever the suite ran."""
-    outcomes = config.stash.get(HEAL_SUITE_OUTCOMES, None)
-    if outcomes is None:
-        return
-    terminalreporter.write_sep("=", "heal fixture suite")
-    verbose = config.get_verbosity() > 0
-    for line in summary_lines(outcomes, verbose=verbose):
-        terminalreporter.write_line(line)
 
 
 @pytest.fixture(scope="session")

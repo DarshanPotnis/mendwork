@@ -98,9 +98,10 @@ Both are plain JavaScript with **no build step**, type-checked by TypeScript.
 - **Model provider tests:** recorded HTTP fixtures via `respx`. Live calls run only via `make live-providers`, never in CI.
 - **Deterministic always:** fixed seeds, injected clock, no sleeps, no order-dependent tests.
 - Tests that assert on CLI output must read it through the `plain_stdout` fixture (`tests/conftest.py`); rich/typer emit ANSI styling when `GITHUB_ACTIONS`, `FORCE_COLOR`, or `PY_COLORS` is set.
-- Tests that launch Chromium through the CLI (the `cli_browser` fixture, the approval commands in `test_cli_approval_browser.py`, and the interrupted `mendwork run` processes in `test_cli_interrupts.py`), sweep every heal pair, replay the examples against the portal in-process (`test_replay_portal.py`), run the heal fixture suite (`test_heal_fixture_suite.py`), check the chaos portal's determinism (`test_chaos_determinism.py`), or record in Chromium (every `test_recording_*.py` browser module) are marked `slow`; `tests/unit/test_slow_marker.py` fails when the split drifts.
+- Tests that launch Chromium through the CLI (the `cli_browser` fixture, the approval commands in `test_cli_approval_browser.py`, the interrupted `mendwork run` processes in `test_cli_interrupts.py`, and the driver-exits-first shutdown checks in `test_browser_shutdown.py`), sweep every heal pair, replay the examples against the portal in-process (`test_replay_portal.py`), run the heal fixture suite (`test_heal_fixture_suite.py`), check the chaos portal's determinism (`test_chaos_determinism.py`), or record in Chromium (every `test_recording_*.py` browser module) are marked `slow`; `tests/unit/test_slow_marker.py` fails when the split drifts.
 - `make check-all`'s coverage gates are the contract; `make check`'s are an early warning set just below the fast suite's figures (ADR 0007).
-- **Time budgets (ADR 0007):** `make check` under 80 s and `make check-all` under 200 s, measured in the foreground on a quiet machine (after a reboot to clear swap, with Chrome, VS Code, and other heavy apps closed). Every test `make check` skips still runs in `make check-all` and CI, and the coverage ratchet stays in `make check`. Work that exceeds a budget stops and reports the numbers; tests are never cut and `slow` is never widened to meet one.
+- **Parallel tests (ADR 0012):** `make check` and `make check-all` run pytest in four pytest-xdist workers with `--dist loadfile` (each test file whole on one worker), and CI runs the same targets. Every test must pass on any worker, in any file order: use `tmp_path` for every file a test writes, port 0 for every server, and never shared module state across files. `make check PYTEST_WORKERS=0` runs serially for debugging. Parallelism stays in the Makefile, never in pyproject's `addopts`.
+- **Time budgets (ADR 0007, ADR 0012):** `make check` under 80 s and `make check-all` under 200 s, measured with the parallel configuration, in the foreground on a quiet machine (after a reboot to clear swap, with Chrome, VS Code, and other heavy apps closed). Every test `make check` skips still runs in `make check-all` and CI, and the coverage ratchet stays in `make check`. Work that exceeds a budget stops and reports the numbers; tests are never cut and `slow` is never widened to meet one.
 - Every file in `engine/replay`, `engine/verification`, `engine/safety`, `engine/recording`, and `engine/healing` must keep ≥ 90% line coverage from unit tests alone; `tests/unit/test_coverage_ratchet.py` enforces it.
 - **Coverage gates:** `mendwork.engine` ≥ 90% lines; overall ≥ 85%.
 - **A wrong click is a failing test.** The heal fixture suite's wrong-action count must be exactly 0.
@@ -118,8 +119,8 @@ Both are plain JavaScript with **no build step**, type-checked by TypeScript.
 | `make typecheck` | mypy --strict |
 | `make imports` | import-linter contracts |
 | `make jscheck` | TypeScript type-check of all browser-side JavaScript (from Phase 1) |
-| `make test` | pytest with coverage gates, skipping tests marked `slow` |
-| `make test-all` | pytest with coverage gates, including `slow` tests |
+| `make test` | pytest in four workers with coverage gates, skipping tests marked `slow` (`PYTEST_WORKERS=0` for a serial run) |
+| `make test-all` | pytest in four workers with coverage gates, including `slow` tests |
 | `make check` | lint + typecheck + imports + jscheck + test (the fast local loop) |
 | `make check-all` | lint + typecheck + imports + jscheck + test-all (what CI runs; must pass before any phase is done) |
 | `make schema` | Regenerate `schemas/workflow.schema.json` from the domain models (a test fails when it is stale) |

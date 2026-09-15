@@ -42,15 +42,22 @@ define coverage_gates
 	@printf '  overall        gate %s%%, measured ' '$(4)'; $(UV) run coverage report --format=total --precision=2 --fail-under=$(4)
 endef
 
+# Parallel test execution (ADR 0012): four pytest-xdist workers, each test file kept whole on one
+# worker, so module fixtures and in-file order are exactly as in a serial run. Four was measured on
+# an 8-core, 8 GB M2 (more workers only swapped) and matches CI's 4 vCPUs. PYTEST_WORKERS=0 runs
+# serially, for debugging. Kept out of pyproject's addopts: the coverage ratchet runs pytest itself.
+PYTEST_WORKERS ?= 4
+PYTEST_PARALLEL := -n $(PYTEST_WORKERS) --dist loadfile
+
 # Everything except tests marked slow: CLI runs that launch their own Chromium, the full heal
 # pair sweep, the in-process portal replays, the heal fixture suite, recordings in Chromium, and
 # the chaos portal's determinism checks.
 test:
-	$(UV) run pytest -m "not slow" --cov --cov-report=term-missing:skip-covered
+	$(UV) run pytest -m "not slow" $(PYTEST_PARALLEL) --cov --cov-report=term-missing:skip-covered
 	$(call coverage_gates,$(FAST_SUITE),97,98,90)
 
 test-all:
-	$(UV) run pytest --cov --cov-report=term-missing:skip-covered
+	$(UV) run pytest $(PYTEST_PARALLEL) --cov --cov-report=term-missing:skip-covered
 	$(call coverage_gates,$(FULL_SUITE),90,95,85)
 
 check: lint typecheck imports jscheck test

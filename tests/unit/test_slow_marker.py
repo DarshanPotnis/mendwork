@@ -29,6 +29,7 @@ SLOW_MODULES: Final = frozenset(
         "integration/test_rung3_known_failures.py",
         "integration/test_cli_approval_browser.py",
         "integration/test_cli_interrupts.py",
+        "integration/test_browser_shutdown.py",
     }
 )
 

@@ -75,3 +75,23 @@ requires async for all I/O, and its integration tests will build on this harness
   loudly with a different-loop error rather than passing by accident.
 - Tests can only use loop-bound objects created on the session loop, which is the same
   constraint the Phase 3 adapter will have.
+
+## Amendment (2026-09-15): a session is one pytest process
+
+Tests now run in four pytest-xdist workers (ADR 0012). Each worker is its own pytest process
+with its own session, so every decision above holds per worker rather than once per run:
+
+- **Fixture scopes are unchanged, and no fixture code changed.** Each worker starts its own
+  `PortalServer` for `portal_url` (bound to port 0, so the operating system gives every worker a
+  different port; the module-scoped fixture sites do the same), its own Playwright driver and
+  Chromium, and its own session event loop. No browser, loop, server, or context is shared across
+  workers.
+- **"One Chromium process" becomes one per worker.** Memory grows with the worker count, which is
+  one reason the count is four on an 8 GB machine (ADR 0012).
+- **Teardown order** (context, browser, driver, server thread) applies inside each worker, which
+  runs it when its own session ends.
+- **The heal pair sweep's shared context stays safe.** Tests are distributed with
+  `--dist loadfile`, so every test of a module runs on one worker, in file order, and a
+  module-scoped fixture is created exactly once, as in a serial run.
+- **The session-loop mark is still required per module;** each worker creates its session loop
+  the same way the serial run does.

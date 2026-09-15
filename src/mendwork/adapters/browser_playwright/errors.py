@@ -44,9 +44,14 @@ def first_line(error: PlaywrightError) -> str:
     return error.message.strip().splitlines()[0] if error.message.strip() else type(error).__name__
 
 
-def is_closed(error: PlaywrightError) -> bool:
-    """Whether the page, context, or browser is gone."""
-    return any(marker in error.message for marker in _CLOSED)
+def is_closed(error: Exception) -> bool:
+    """Whether the page, context, or browser is gone, or Playwright's driver with them.
+
+    Playwright reports a driver that has already exited with a plain ``Exception`` ("Connection
+    closed while reading from the driver"), not its own ``Error``, so both are read here.
+    """
+    message = error.message if isinstance(error, PlaywrightError) else str(error)
+    return any(marker in message for marker in _CLOSED)
 
 
 def is_context_destroyed(error: PlaywrightError) -> bool:

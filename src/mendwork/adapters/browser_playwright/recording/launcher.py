@@ -16,12 +16,12 @@ from types import TracebackType
 from typing import Self
 
 from playwright.async_api import Browser, Playwright
-from playwright.async_api import Error as PlaywrightError
 
-from mendwork.adapters.browser_playwright.errors import is_closed
 from mendwork.adapters.browser_playwright.launcher import (
     LaunchOptions,
     SessionOptions,
+    close_chromium,
+    close_quietly,
     new_context,
     remove_workdir,
     start_chromium,
@@ -103,11 +103,7 @@ class PlaywrightRecordingLauncher:
                 )
             finally:
                 channel.close()
-                try:
-                    await context.close()
-                except PlaywrightError as error:
-                    if not is_closed(error):
-                        raise
+                await close_quietly("context", context.close)
         finally:
             await asyncio.to_thread(remove_workdir, workdir)
 
@@ -134,10 +130,7 @@ class ChromiumRecordingLauncher:
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        if self._browser is not None:
-            await self._browser.close()
-        if self._playwright is not None:
-            await self._playwright.stop()
+        await close_chromium(self._browser, self._playwright)
 
     @asynccontextmanager
     async def recording_session(self) -> AsyncIterator[PlaywrightRecordingSession]:
