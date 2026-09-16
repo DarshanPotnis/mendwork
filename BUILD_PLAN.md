@@ -462,6 +462,30 @@ Read ARCHITECTURE.md §13. Present a plan and wait for approval.
 Acceptance: make check passes; `make bench` produces the scorecard; README top section updated with real numbers and a link to the scorecard.
 ```
 
+**As built (ADR 0014).**
+
+- **Scope.** Both example workflows at levels 2, 3, and 5 on seeds 1000 to 1019, fixed in
+  `benchmarks/chaos/bench_seeds.json` before any run, plus the heal fixture suite's 67 single-change
+  cases, through five systems: a recorded-CSS script, a role + name script, Mendwork with free rungs,
+  Mendwork with the ground-truth chooser (an upper bound, not a model), and Mendwork with the local
+  model.
+- **Ground truth at every action.** The browser wrapper records which controls each element really
+  is, lined up with the run's events; page-recorded wrong actions and whether a stopped step's control
+  was still there are read too. Classification, metrics, the results schema, and the outcomes digest
+  are pure engine code (`engine/benchmark`), under the coverage ratchet.
+- **Outcome classes.** Nine, applied in order: wrong (healed or direct; caught or false success),
+  approval requested, correct (healed or direct), abstained correctly, abstained unnecessarily (the
+  real control was attached and visible), failed, and not reached.
+- **Baselines are not a mode of the product.** The scripts live in `benchmarks/baselines` and check the
+  workflow's own checkpoints, so their wrong actions are a lower bound.
+- **Output.** `mendwork bench chaos` writes `chaos-results.json` (schema version 1) and a
+  self-contained `scorecard.html`; `mendwork bench scorecard` renders any results files. The harness
+  imports through Hatch's `dev-mode-dirs`, and a fifth import contract keeps it out of the engine and
+  adapters.
+- **CI.** `tests/integration/test_bench_smoke.py` reruns level 5 seeds 1000 to 1004 through the two
+  free Mendwork systems, fails on any wrong action or false success, and requires the committed results'
+  outcomes digest for those cells.
+
 **🎉 MVP done.** Record the demo video now: two headed runs on the same chaos seed (baseline vs full ladder), then the HTML report and scorecard.
 
 ---

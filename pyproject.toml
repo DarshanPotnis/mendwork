@@ -41,6 +41,9 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mendwork"]
+# Editable installs only: the repository root joins sys.path, so `uv run mendwork bench` can load
+# the benchmark harness in benchmarks/. The wheel still ships only src/mendwork (ADR 0014).
+dev-mode-dirs = ["src", "."]
 
 [tool.ruff]
 line-length = 100

@@ -1,0 +1,65 @@
+{
+  "pair": "gitea",
+  "release": "1.22.6",
+  "workflow_id": "gitea_new_issue_form",
+  "labelled_on": "2026-09-15",
+  "method": "Written from release 1.22.6's own rendered pages, read with plain Playwright scripts of the benchmark's own (a control inventory of every page the task visits, and a check that each candidate locator matches exactly one visible element), before Mendwork replayed anything on this release. Mendwork's recorder ran on release 1.19.4 only. No Mendwork output for 1.22.6 existed when these labels were written, and none was consulted.",
+  "steps": [
+    {
+      "step_id": "fill_username_or_email_address",
+      "expect": "act",
+      "selector": "#user_name",
+      "changed": false,
+      "note": "The sign-in form's first field. Its id, name, type and label are the ones 1.19.4 had."
+    },
+    {
+      "step_id": "fill_password",
+      "expect": "act",
+      "selector": "#password",
+      "changed": false,
+      "note": "The sign-in form's password field, unchanged in id, name, type and label."
+    },
+    {
+      "step_id": "click_sign_in",
+      "expect": "act",
+      "selector": "role=button[name=\"Sign In\"]",
+      "changed": true,
+      "note": "The form's submit button. Its wording is unchanged, but its classes changed from 'ui green button' to 'ui primary button'; it still has no id."
+    },
+    {
+      "step_id": "click_bench_demo",
+      "expect": "act",
+      "selector": "a[href=\"/bench/demo\"]:not(.repo-list-link)",
+      "changed": true,
+      "note": "The repository link in the dashboard's activity feed: the control the 1.19.4 recording clicked. Changed twice over: the feed's markup was rewritten, and the sidebar's repository link, named 'bench/demo0' on 1.19.4, is now named 'bench/demo' too. The two share role, name and destination but differ in container, position and icon; only the feed link is recorded."
+    },
+    {
+      "step_id": "click_issues_1",
+      "expect": "act",
+      "selector": "a.item[href=\"/bench/demo/issues\"]",
+      "changed": true,
+      "note": "The repository's Issues tab. Its accessible name is 'Issues 1' on both releases; what changed is where it sits: an 'overflow-menu-items' container in 1.22.6, a 'ui tabular stackable menu navbar' in 1.19.4."
+    },
+    {
+      "step_id": "click_new_issue",
+      "expect": "act",
+      "selector": "a[href=\"/bench/demo/issues/new\"]",
+      "changed": true,
+      "note": "The New Issue link above the issue list. Its wording is unchanged; its classes changed from 'ui green button' to 'ui small primary button issue-list-new'."
+    },
+    {
+      "step_id": "fill_title",
+      "expect": "act",
+      "selector": "#issue_title",
+      "changed": false,
+      "note": "The new issue's title field. Its id, name and placeholder are unchanged; 1.22.6 adds a 'js-autofocus-end' class, which no recorded selector depends on."
+    },
+    {
+      "step_id": "click_create_issue",
+      "expect": "act",
+      "selector": "role=button[name=\"Create Issue\"]",
+      "changed": true,
+      "note": "The new-issue form's submit button, which creates the issue. Its wording is unchanged; its classes changed from 'ui green button loading-button' to 'ui primary button', and it has no id in either release."
+    }
+  ]
+}

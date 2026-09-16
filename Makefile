@@ -64,9 +64,11 @@ check: lint typecheck imports jscheck test
 
 check-all: lint typecheck imports jscheck test-all
 
-# Regenerates the workflow JSON Schema from the domain models; a test fails when it is stale.
+# Regenerates the workflow and benchmark results JSON Schemas from the domain models; a test fails
+# when either is stale.
 schema:
-	$(UV) run mendwork schema --output schemas/workflow.schema.json
+	$(UV) run mendwork schema --output schemas/workflow.schema.json \
+		--results-output schemas/bench-results.schema.json
 
 portal:
 	$(UV) run python -m mendwork.apps.portal --root chaos-portal
@@ -79,8 +81,24 @@ chaos-pairs:
 recording-golden:
 	$(UV) run python -m tests.integration.regenerate_recording_golden
 
+# The published benchmark (ADR 0014): both example workflows at levels 2, 3, and 5 on 20 seeds from
+# 1000 that no earlier phase used (benchmarks/chaos/bench_seeds.json, which a test keeps in step with
+# these arguments), every system, and the single-mutation cases. BENCH_MODEL=1 adds the configured
+# model's column (MENDWORK_MODEL_PROVIDER and MENDWORK_MODEL_NAME, with the model server running). A
+# real-app pair's results, when present, follow the grid in their own section. Exits 1 if a Mendwork
+# system acted on a wrong element. BENCH_NOTE='...' records the machine's conditions.
+BENCH_ARGS := --workflows workflows/examples --level 2 --level 3 --level 5 --seeds 20 --seed-start 1000
+BENCH_SYSTEMS := --system css_selector --system role_name --system ladder_free --system ladder_ground_truth
+BENCH_REAL_APP := benchmarks/results/real-app-results.json
+# One sentence about what the machine was doing, recorded verbatim in the results provenance.
+BENCH_NOTE ?=
+
 bench:
-	@echo "make bench: available from Phase 9"
+	$(UV) run mendwork bench chaos $(BENCH_ARGS) $(BENCH_SYSTEMS) \
+		$(if $(BENCH_MODEL),--system ladder_model,) \
+		$(if $(wildcard $(BENCH_REAL_APP)),--include $(BENCH_REAL_APP),) \
+		$(if $(BENCH_NOTE),--note "$(BENCH_NOTE)",) \
+		--single-mutations --output benchmarks/results --gate
 
 # Calls the model provider MENDWORK_MODEL_* configures, for real. Local only, never in CI.
 live-providers:

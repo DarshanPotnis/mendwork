@@ -11,7 +11,10 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Final
 
-_NAME: Final = re.compile(r"[a-z][a-z0-9-]*")
+_TAG: Final = re.compile(r"[a-z][a-z0-9-]*")
+_ATTRIBUTE: Final = re.compile(r"[a-zA-Z][a-zA-Z0-9-]*")
+"""Attribute names may be camel-cased, as SVG's ``viewBox`` is; they still hold only letters,
+digits, and hyphens, so no name can close a tag or start another attribute."""
 VOID_TAGS: Final = frozenset({"img", "meta", "br"})
 
 
@@ -41,8 +44,9 @@ def element(
 
     Raises ValueError for a tag or attribute name that is not a plain lowercase word.
     """
-    for name in (tag, *(attributes or {})):
-        if _NAME.fullmatch(name) is None:
+    names = [(tag, _TAG), *((name, _ATTRIBUTE) for name in attributes or {})]
+    for name, pattern in names:
+        if pattern.fullmatch(name) is None:
             raise ValueError(f"not a plain tag or attribute name: {name!r}")
     rendered = "".join(
         f' {name}="{html.escape(value, quote=True)}"'

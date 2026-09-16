@@ -1,0 +1,1411 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "ActionType": {
+      "description": "What a step does. A download is a CLICK verified by a download_completed checkpoint.",
+      "enum": [
+        "navigate",
+        "click",
+        "fill",
+        "select",
+        "press"
+      ],
+      "title": "ActionType",
+      "type": "string"
+    },
+    "CellResult": {
+      "additionalProperties": false,
+      "description": "One cell's outcome and measurements.",
+      "properties": {
+        "cell": {
+          "discriminator": {
+            "mapping": {
+              "chaos": "#/$defs/ChaosCell",
+              "real_app": "#/$defs/RealAppCell",
+              "single_mutation": "#/$defs/MutationCaseCell"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ChaosCell"
+            },
+            {
+              "$ref": "#/$defs/MutationCaseCell"
+            },
+            {
+              "$ref": "#/$defs/RealAppCell"
+            }
+          ],
+          "title": "Cell"
+        },
+        "run_status": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Run Status",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/StepOutcome"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "run_failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunFailure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Why the run stopped, when it did not succeed; None for a run that finished its steps."
+        },
+        "model_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Model Calls",
+          "type": "integer"
+        },
+        "timings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/StepTiming"
+          },
+          "title": "Timings",
+          "type": "array"
+        },
+        "usage": {
+          "$ref": "#/$defs/UsageMeasurement",
+          "default": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "latency_ms": 0,
+            "cost_usd": "0",
+            "unpriced_calls": 0
+          }
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        }
+      },
+      "required": [
+        "cell",
+        "run_status",
+        "steps"
+      ],
+      "title": "CellResult",
+      "type": "object"
+    },
+    "ChaosCell": {
+      "additionalProperties": false,
+      "description": "A workflow on one chaos seed and level.",
+      "properties": {
+        "type": {
+          "const": "chaos",
+          "default": "chaos",
+          "title": "Type",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "level": {
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Level",
+          "type": "integer"
+        },
+        "seed": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "title": "Seed",
+          "type": "integer"
+        },
+        "system": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "System",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflow_id",
+        "level",
+        "seed",
+        "system"
+      ],
+      "title": "ChaosCell",
+      "type": "object"
+    },
+    "Expectation": {
+      "description": "What ground truth says a system should do at a step.",
+      "enum": [
+        "act",
+        "abstain"
+      ],
+      "title": "Expectation",
+      "type": "string"
+    },
+    "FailureCount": {
+      "additionalProperties": false,
+      "description": "How often runs stopped at one kind of step for one reason.",
+      "properties": {
+        "step_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Step Id",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "count": {
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "targeted": {
+          "default": true,
+          "description": "False when the step acts on no control, such as a navigate: those have no outcome class.",
+          "title": "Targeted",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "step_id",
+        "reason",
+        "count"
+      ],
+      "title": "FailureCount",
+      "type": "object"
+    },
+    "GroupMetrics": {
+      "additionalProperties": false,
+      "description": "The metrics of one row: a level, a mutation, a pair, or a checkpoint strength.",
+      "properties": {
+        "group": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Group",
+          "type": "string"
+        },
+        "metrics": {
+          "$ref": "#/$defs/StepMetrics"
+        }
+      },
+      "required": [
+        "group",
+        "metrics"
+      ],
+      "title": "GroupMetrics",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "LatencyBreakdown": {
+      "additionalProperties": false,
+      "description": "Step latency for all reached steps, and split by how the step ended.",
+      "properties": {
+        "all": {
+          "$ref": "#/$defs/LatencySummary"
+        },
+        "direct": {
+          "$ref": "#/$defs/LatencySummary",
+          "description": "Steps resolved correctly by the recorded selectors or a script's locator."
+        },
+        "healed": {
+          "$ref": "#/$defs/LatencySummary"
+        },
+        "stopped": {
+          "$ref": "#/$defs/LatencySummary",
+          "description": "Steps that did not resolve correctly: abstentions, failures, wrong actions."
+        }
+      },
+      "required": [
+        "all",
+        "direct",
+        "healed",
+        "stopped"
+      ],
+      "title": "LatencyBreakdown",
+      "type": "object"
+    },
+    "LatencySummary": {
+      "additionalProperties": false,
+      "description": "Step durations at the 50th and 95th percentiles.",
+      "properties": {
+        "count": {
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "p50_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P50 Ms"
+        },
+        "p95_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P95 Ms"
+        }
+      },
+      "required": [
+        "count"
+      ],
+      "title": "LatencySummary",
+      "type": "object"
+    },
+    "ModelProvenance": {
+      "additionalProperties": false,
+      "description": "The model behind a system's Rung 3.",
+      "properties": {
+        "system": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "System",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "prompt_version": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Prompt Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "system",
+        "provider",
+        "model",
+        "prompt_version"
+      ],
+      "title": "ModelProvenance",
+      "type": "object"
+    },
+    "MutationCaseCell": {
+      "additionalProperties": false,
+      "description": "A workflow segment on a page with exactly one change.",
+      "properties": {
+        "type": {
+          "const": "single_mutation",
+          "default": "single_mutation",
+          "title": "Type",
+          "type": "string"
+        },
+        "case_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Case Id",
+          "type": "string"
+        },
+        "mutation": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Mutation",
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/$defs/MutationCategory"
+        },
+        "workflow_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "system": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "System",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "mutation",
+        "category",
+        "workflow_id",
+        "system"
+      ],
+      "title": "MutationCaseCell",
+      "type": "object"
+    },
+    "MutationCategory": {
+      "description": "Whether a change to a page is one a system should heal through or stop at.",
+      "enum": [
+        "heal_expected",
+        "abstain_expected"
+      ],
+      "title": "MutationCategory",
+      "type": "string"
+    },
+    "OutcomeClass": {
+      "description": "A step's outcome, one per reached targeted step.",
+      "enum": [
+        "healed_wrong",
+        "direct_wrong",
+        "abstained_correct",
+        "abstained_unnecessary",
+        "healed_correct",
+        "direct_correct",
+        "failed",
+        "approval_requested",
+        "ground_truth_unknown",
+        "not_reached"
+      ],
+      "title": "OutcomeClass",
+      "type": "string"
+    },
+    "OutcomeCounts": {
+      "additionalProperties": false,
+      "description": "How many steps landed in each class.",
+      "properties": {
+        "healed_wrong": {
+          "default": 0,
+          "title": "Healed Wrong",
+          "type": "integer"
+        },
+        "direct_wrong": {
+          "default": 0,
+          "title": "Direct Wrong",
+          "type": "integer"
+        },
+        "abstained_correct": {
+          "default": 0,
+          "title": "Abstained Correct",
+          "type": "integer"
+        },
+        "abstained_unnecessary": {
+          "default": 0,
+          "title": "Abstained Unnecessary",
+          "type": "integer"
+        },
+        "healed_correct": {
+          "default": 0,
+          "title": "Healed Correct",
+          "type": "integer"
+        },
+        "direct_correct": {
+          "default": 0,
+          "title": "Direct Correct",
+          "type": "integer"
+        },
+        "failed": {
+          "default": 0,
+          "title": "Failed",
+          "type": "integer"
+        },
+        "approval_requested": {
+          "default": 0,
+          "title": "Approval Requested",
+          "type": "integer"
+        },
+        "ground_truth_unknown": {
+          "default": 0,
+          "title": "Ground Truth Unknown",
+          "type": "integer"
+        },
+        "not_reached": {
+          "default": 0,
+          "title": "Not Reached",
+          "type": "integer"
+        }
+      },
+      "title": "OutcomeCounts",
+      "type": "object"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "description": "What was measured, where, and with what.",
+      "properties": {
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "mendwork_version": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Mendwork Version",
+          "type": "string"
+        },
+        "platform": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Platform",
+          "type": "string"
+        },
+        "python": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Python",
+          "type": "string"
+        },
+        "browser": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Browser",
+          "type": "string"
+        },
+        "concurrency": {
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "step_timeout_ms": {
+          "minimum": 1,
+          "title": "Step Timeout Ms",
+          "type": "integer"
+        },
+        "levels": {
+          "default": [],
+          "items": {
+            "type": "integer"
+          },
+          "title": "Levels",
+          "type": "array"
+        },
+        "seeds": {
+          "default": [],
+          "items": {
+            "type": "integer"
+          },
+          "title": "Seeds",
+          "type": "array"
+        },
+        "workflows": {
+          "default": [],
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Workflows",
+          "type": "array"
+        },
+        "source_digests": {
+          "additionalProperties": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Source Digests",
+          "type": "object"
+        },
+        "settings_overrides": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Settings Overrides",
+          "type": "object"
+        },
+        "models": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ModelProvenance"
+          },
+          "title": "Models",
+          "type": "array"
+        },
+        "notes": {
+          "default": [],
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "generated_at",
+        "mendwork_version",
+        "platform",
+        "python",
+        "browser",
+        "concurrency",
+        "step_timeout_ms"
+      ],
+      "title": "Provenance",
+      "type": "object"
+    },
+    "Ratio": {
+      "additionalProperties": false,
+      "description": "A count out of a count.",
+      "properties": {
+        "numerator": {
+          "minimum": 0,
+          "title": "Numerator",
+          "type": "integer"
+        },
+        "denominator": {
+          "minimum": 0,
+          "title": "Denominator",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "numerator",
+        "denominator"
+      ],
+      "title": "Ratio",
+      "type": "object"
+    },
+    "RealAppCell": {
+      "additionalProperties": false,
+      "description": "A workflow recorded on one release of an application, run on another.",
+      "properties": {
+        "type": {
+          "const": "real_app",
+          "default": "real_app",
+          "title": "Type",
+          "type": "string"
+        },
+        "pair": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Pair",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "system": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "System",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pair",
+        "workflow_id",
+        "system"
+      ],
+      "title": "RealAppCell",
+      "type": "object"
+    },
+    "ReasonCount": {
+      "additionalProperties": false,
+      "description": "How often a stop reason occurred.",
+      "properties": {
+        "reason": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "count": {
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "reason",
+        "count"
+      ],
+      "title": "ReasonCount",
+      "type": "object"
+    },
+    "Resolution": {
+      "description": "Where the element a system acted on came from.",
+      "enum": [
+        "direct",
+        "rung_1",
+        "rung_2",
+        "rung_3"
+      ],
+      "title": "Resolution",
+      "type": "string"
+    },
+    "ResolutionCounts": {
+      "additionalProperties": false,
+      "description": "Where the elements of correctly resolved steps came from.",
+      "properties": {
+        "direct": {
+          "default": 0,
+          "title": "Direct",
+          "type": "integer"
+        },
+        "rung_1": {
+          "default": 0,
+          "title": "Rung 1",
+          "type": "integer"
+        },
+        "rung_2": {
+          "default": 0,
+          "title": "Rung 2",
+          "type": "integer"
+        },
+        "rung_3": {
+          "default": 0,
+          "title": "Rung 3",
+          "type": "integer"
+        }
+      },
+      "title": "ResolutionCounts",
+      "type": "object"
+    },
+    "RunFailure": {
+      "additionalProperties": false,
+      "description": "The step a run stopped at, and why.\n\nClassified outcomes cover only the steps that act on a control, so a run that stops at a\nnavigate step would otherwise leave no trace of why it ended. Every failed run carries one of\nthese, and a reason nobody recorded is named ``unrecorded`` rather than left out.",
+      "properties": {
+        "step_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Step Id",
+          "type": "string"
+        },
+        "action": {
+          "$ref": "#/$defs/ActionType"
+        },
+        "stop": {
+          "$ref": "#/$defs/StopKind"
+        },
+        "reason": {
+          "default": "unrecorded",
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "targeted": {
+          "default": true,
+          "description": "Whether the step acts on a control, and so also appears among the classified steps.",
+          "title": "Targeted",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "step_id",
+        "action",
+        "stop"
+      ],
+      "title": "RunFailure",
+      "type": "object"
+    },
+    "RunTotals": {
+      "additionalProperties": false,
+      "description": "Totals over a system's runs.",
+      "properties": {
+        "runs": {
+          "minimum": 0,
+          "title": "Runs",
+          "type": "integer"
+        },
+        "succeeded": {
+          "minimum": 0,
+          "title": "Succeeded",
+          "type": "integer"
+        },
+        "model_calls": {
+          "minimum": 0,
+          "title": "Model Calls",
+          "type": "integer"
+        },
+        "input_tokens": {
+          "minimum": 0,
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "minimum": 0,
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "model_latency_ms": {
+          "minimum": 0,
+          "title": "Model Latency Ms",
+          "type": "integer"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Cost Usd"
+        },
+        "unpriced_calls": {
+          "minimum": 0,
+          "title": "Unpriced Calls",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "runs",
+        "succeeded",
+        "model_calls",
+        "input_tokens",
+        "output_tokens",
+        "model_latency_ms",
+        "cost_usd",
+        "unpriced_calls"
+      ],
+      "title": "RunTotals",
+      "type": "object"
+    },
+    "Section": {
+      "additionalProperties": false,
+      "description": "One suite's cells, with every system's summary and the outcomes digest.",
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "cells": {
+          "items": {
+            "$ref": "#/$defs/CellResult"
+          },
+          "title": "Cells",
+          "type": "array"
+        },
+        "systems": {
+          "items": {
+            "$ref": "#/$defs/SystemSummary"
+          },
+          "title": "Systems",
+          "type": "array"
+        },
+        "outcomes_digest": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Outcomes Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "description",
+        "cells",
+        "systems",
+        "outcomes_digest"
+      ],
+      "title": "Section",
+      "type": "object"
+    },
+    "SkippedSection": {
+      "additionalProperties": false,
+      "description": "A suite that was not run, and why.",
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "reason"
+      ],
+      "title": "SkippedSection",
+      "type": "object"
+    },
+    "StepMetrics": {
+      "additionalProperties": false,
+      "description": "Every step metric over a set of classified steps.",
+      "properties": {
+        "steps": {
+          "minimum": 0,
+          "title": "Steps",
+          "type": "integer"
+        },
+        "reached": {
+          "minimum": 0,
+          "title": "Reached",
+          "type": "integer"
+        },
+        "counts": {
+          "$ref": "#/$defs/OutcomeCounts"
+        },
+        "wrong_action_rate": {
+          "$ref": "#/$defs/Ratio",
+          "description": "Wrong steps out of reached steps: the headline."
+        },
+        "false_successes": {
+          "minimum": 0,
+          "title": "False Successes",
+          "type": "integer"
+        },
+        "caught_wrong": {
+          "minimum": 0,
+          "title": "Caught Wrong",
+          "type": "integer"
+        },
+        "wrong_actions": {
+          "minimum": 0,
+          "title": "Wrong Actions",
+          "type": "integer"
+        },
+        "unjudged_rate": {
+          "$ref": "#/$defs/Ratio",
+          "description": "Steps with an action ground truth could not judge, out of reached steps.\n\nThese are never counted wrong or correct, so they are reported on their own: a suite whose\nground truth stops answering would otherwise look like a suite with nothing to report."
+        },
+        "unknown_actions": {
+          "minimum": 0,
+          "title": "Unknown Actions",
+          "type": "integer"
+        },
+        "actions_checked": {
+          "minimum": 0,
+          "title": "Actions Checked",
+          "type": "integer"
+        },
+        "changed_step_completion": {
+          "$ref": "#/$defs/Ratio",
+          "description": "Correctly resolved steps out of reached act steps whose control a release changed."
+        },
+        "heal_success": {
+          "$ref": "#/$defs/Ratio",
+          "description": "Healed correctly out of reached act steps where the ladder ran; 0/0 for a script."
+        },
+        "correct_abstain": {
+          "$ref": "#/$defs/Ratio"
+        },
+        "unnecessary_abstain": {
+          "$ref": "#/$defs/Ratio"
+        },
+        "resolutions": {
+          "$ref": "#/$defs/ResolutionCounts"
+        },
+        "strengths": {
+          "$ref": "#/$defs/StrengthCounts"
+        },
+        "stop_reasons": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReasonCount"
+          },
+          "title": "Stop Reasons",
+          "type": "array"
+        }
+      },
+      "required": [
+        "steps",
+        "reached",
+        "counts",
+        "wrong_action_rate",
+        "false_successes",
+        "caught_wrong",
+        "wrong_actions",
+        "unjudged_rate",
+        "unknown_actions",
+        "actions_checked",
+        "changed_step_completion",
+        "heal_success",
+        "correct_abstain",
+        "unnecessary_abstain",
+        "resolutions",
+        "strengths"
+      ],
+      "title": "StepMetrics",
+      "type": "object"
+    },
+    "StepOutcome": {
+      "additionalProperties": false,
+      "description": "A classified step: what ground truth expected, what happened, and why it is in its class.",
+      "properties": {
+        "step_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Step Id",
+          "type": "string"
+        },
+        "target_key": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Target Key",
+          "type": "string"
+        },
+        "expectation": {
+          "$ref": "#/$defs/Expectation"
+        },
+        "changes": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Changes",
+          "type": "array"
+        },
+        "strength": {
+          "$ref": "#/$defs/VerificationStrength"
+        },
+        "outcome": {
+          "$ref": "#/$defs/OutcomeClass"
+        },
+        "wrong": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WrongKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "resolution": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Resolution"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where the deciding element came from: the first wrong one, or the one the step passed on."
+        },
+        "stop": {
+          "$ref": "#/$defs/StopKind"
+        },
+        "stop_reason": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stop Reason"
+        },
+        "ladder_ran": {
+          "default": false,
+          "title": "Ladder Ran",
+          "type": "boolean"
+        },
+        "actions": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Actions",
+          "type": "integer"
+        },
+        "wrong_actions": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Wrong Actions",
+          "type": "integer"
+        },
+        "unknown_actions": {
+          "default": 0,
+          "description": "Actions ground truth could not judge, which are never counted as wrong.",
+          "minimum": 0,
+          "title": "Unknown Actions",
+          "type": "integer"
+        },
+        "proposal_on_target": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proposal On Target"
+        }
+      },
+      "required": [
+        "step_id",
+        "target_key",
+        "expectation",
+        "strength",
+        "outcome",
+        "stop"
+      ],
+      "title": "StepOutcome",
+      "type": "object"
+    },
+    "StepTiming": {
+      "additionalProperties": false,
+      "description": "How long a reached step took.",
+      "properties": {
+        "step_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+          "title": "Step Id",
+          "type": "string"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        }
+      },
+      "required": [
+        "step_id"
+      ],
+      "title": "StepTiming",
+      "type": "object"
+    },
+    "StopKind": {
+      "description": "How a step ended, as far as classification cares.",
+      "enum": [
+        "completed",
+        "declined",
+        "approval",
+        "checkpoint_failed",
+        "error",
+        "unexpressible",
+        "not_reached"
+      ],
+      "title": "StopKind",
+      "type": "string"
+    },
+    "StrengthCounts": {
+      "additionalProperties": false,
+      "description": "Reached steps by how strongly their checkpoints prove the element (ADR 0010).",
+      "properties": {
+        "strong": {
+          "default": 0,
+          "title": "Strong",
+          "type": "integer"
+        },
+        "weak": {
+          "default": 0,
+          "title": "Weak",
+          "type": "integer"
+        },
+        "none": {
+          "default": 0,
+          "title": "None",
+          "type": "integer"
+        }
+      },
+      "title": "StrengthCounts",
+      "type": "object"
+    },
+    "SystemDescription": {
+      "additionalProperties": false,
+      "description": "A benchmarked system, as the scorecard names it.",
+      "properties": {
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "short_label": {
+          "description": "The name a chart row has room for: longer would run into the plot.",
+          "maxLength": 28,
+          "minLength": 1,
+          "title": "Short Label",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/SystemKind"
+        },
+        "description": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "chooser": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Who chooses at Rung 3: a model, the ground-truth upper bound, or None without Rung 3.",
+          "title": "Chooser"
+        },
+        "gated": {
+          "default": false,
+          "description": "Whether a wrong action by this system fails the benchmark.",
+          "title": "Gated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "short_label",
+        "kind",
+        "description"
+      ],
+      "title": "SystemDescription",
+      "type": "object"
+    },
+    "SystemKind": {
+      "description": "Whether a system is a plain script or Mendwork's ladder.",
+      "enum": [
+        "script",
+        "ladder"
+      ],
+      "title": "SystemKind",
+      "type": "string"
+    },
+    "SystemSummary": {
+      "additionalProperties": false,
+      "description": "Everything the scorecard shows for one system in one section.",
+      "properties": {
+        "system": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "System",
+          "type": "string"
+        },
+        "overall": {
+          "$ref": "#/$defs/StepMetrics"
+        },
+        "groups": {
+          "items": {
+            "$ref": "#/$defs/GroupMetrics"
+          },
+          "title": "Groups",
+          "type": "array"
+        },
+        "by_strength": {
+          "items": {
+            "$ref": "#/$defs/GroupMetrics"
+          },
+          "title": "By Strength",
+          "type": "array"
+        },
+        "latency": {
+          "$ref": "#/$defs/LatencyBreakdown"
+        },
+        "runs": {
+          "$ref": "#/$defs/RunTotals"
+        },
+        "failures": {
+          "default": [],
+          "description": "Why runs stopped, including at steps that act on no control.",
+          "items": {
+            "$ref": "#/$defs/FailureCount"
+          },
+          "title": "Failures",
+          "type": "array"
+        }
+      },
+      "required": [
+        "system",
+        "overall",
+        "groups",
+        "by_strength",
+        "latency",
+        "runs"
+      ],
+      "title": "SystemSummary",
+      "type": "object"
+    },
+    "UsageMeasurement": {
+      "additionalProperties": false,
+      "description": "What a cell's model calls used; empty for a system without a model.",
+      "properties": {
+        "input_tokens": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "latency_ms": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Latency Ms",
+          "type": "integer"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "default": "0",
+          "title": "Cost Usd"
+        },
+        "unpriced_calls": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Unpriced Calls",
+          "type": "integer"
+        }
+      },
+      "title": "UsageMeasurement",
+      "type": "object"
+    },
+    "VerificationStrength": {
+      "description": "How much a step's checkpoints prove about which element was acted on (ADR 0010).",
+      "enum": [
+        "strong",
+        "weak",
+        "none"
+      ],
+      "title": "VerificationStrength",
+      "type": "string"
+    },
+    "WrongKind": {
+      "description": "Whether verification noticed a wrong action.",
+      "enum": [
+        "caught",
+        "false_success"
+      ],
+      "title": "WrongKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The whole results document.",
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    },
+    "systems": {
+      "items": {
+        "$ref": "#/$defs/SystemDescription"
+      },
+      "title": "Systems",
+      "type": "array"
+    },
+    "sections": {
+      "items": {
+        "$ref": "#/$defs/Section"
+      },
+      "title": "Sections",
+      "type": "array"
+    },
+    "skipped": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SkippedSection"
+      },
+      "title": "Skipped",
+      "type": "array"
+    }
+  },
+  "required": [
+    "provenance",
+    "systems",
+    "sections"
+  ],
+  "title": "Mendwork benchmark results",
+  "type": "object"
+}

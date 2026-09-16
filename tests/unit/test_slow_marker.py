@@ -32,6 +32,7 @@ SLOW_MODULES: Final = frozenset(
         "integration/test_browser_shutdown.py",
         "integration/test_patching_guarantee.py",
         "integration/test_cli_patching_browser.py",
+        "integration/test_bench_smoke.py",
     }
 )
 

@@ -1,0 +1,2350 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "generated_at": "2026-09-16T02:57:06.542224Z",
+    "mendwork_version": "0.1.0",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "python": "3.12.14",
+    "browser": "chromium 151.0.7922.34",
+    "concurrency": 1,
+    "step_timeout_ms": 10000,
+    "levels": [],
+    "seeds": [],
+    "workflows": [
+      "gitea_new_issue_form"
+    ],
+    "source_digests": {
+      "src/mendwork": "sha256:9da872ec18b08167dfa21e33d7868eb7170a96d312a1f3bbf80d4e33693af5ca",
+      "chaos-portal": "sha256:0a2d804b5ba88f37062e5af91b414f53ef22c2629de9cd6e0e443af4c81b5dfe",
+      "benchmarks": "sha256:162aa06bba7179279a56be0e5cc89aa79c349a651e2e48c7ae135a965ffcb128",
+      "workflow:gitea_new_issue_form": "sha256:c113d928abeb55617362148c2d4e5c29108ceddc153198098dd63f02ca4487b2",
+      "labels:gitea 1.22.6": "sha256:0eda673bb8c9a0e2d33489e2e6aa5268abe67b1936a2ab84d725c4e6e52c1587",
+      "image:gitea 1.19.4 (recorded on)": "gitea/gitea@sha256:bca3994c102089aeb8d6bacd30d2b4f7056853fe9fb8d709bc81a103079b4f60",
+      "image:gitea 1.22.6 (replayed on)": "gitea/gitea@sha256:538658de667c5d098a274f2f63aa6ec891d88f670cdd5282cf27221ba747dda4"
+    },
+    "settings_overrides": {
+      "trace_on_failure": false
+    },
+    "models": [],
+    "notes": [
+      "Measured with the container runtime (Colima) running, which a real-application pair requires; the chaos grid's timings were taken with it stopped.",
+      "The 1.22.6 labels were written before Mendwork ran on that release, and approved on 2026-09-16 by Darshan Potnis (repository owner) against the 9 screenshots of the labels walk.",
+      "The task's last step creates an issue, which cannot be undone. Its recorded risk was raised to irreversible, so a heal there stops for a person instead of acting."
+    ]
+  },
+  "systems": [
+    {
+      "id": "css_selector",
+      "label": "Recorded CSS selector (plain Playwright script)",
+      "short_label": "CSS selector script",
+      "kind": "script",
+      "description": "Each step's recorded css selector through page.locator, with Playwright's auto-waiting and strict mode, and nothing else: no identity check, no healing. It is verified by the workflow's own checkpoints, which a plain script usually lacks, so it stops after a caught wrong action where an unasserted script would carry on: its wrong actions are a lower bound.",
+      "chooser": null,
+      "gated": false
+    },
+    {
+      "id": "role_name",
+      "label": "Role + name locator (careful Playwright script)",
+      "short_label": "Role + name script",
+      "kind": "script",
+      "description": "Each step's recorded role and accessible name through Playwright's user-facing locators, or its label for a field without a role, with auto-waiting and strict mode and no healing. It is verified by the workflow's own checkpoints, which a plain script usually lacks, so it stops after a caught wrong action where an unasserted script would carry on: its wrong actions are a lower bound.",
+      "chooser": null,
+      "gated": false
+    },
+    {
+      "id": "ladder_free",
+      "label": "Mendwork, free rungs only",
+      "short_label": "Mendwork, free rungs",
+      "kind": "ladder",
+      "description": "The product as shipped, with no model configured: recorded selectors, alternate selectors, and similarity scoring, every heal verified.",
+      "chooser": null,
+      "gated": true
+    },
+    {
+      "id": "ladder_ground_truth",
+      "label": "Mendwork + ground-truth chooser (upper bound, not a model)",
+      "short_label": "Mendwork + ground truth",
+      "kind": "ladder",
+      "description": "The full ladder with Rung 3 answered from the portal's ground truth, only when exactly one listed line reads like the real target: what the rules let a perfect chooser heal. It is not a model, and its numbers are an upper bound.",
+      "chooser": "ground truth (upper bound)",
+      "gated": true
+    }
+  ],
+  "sections": [
+    {
+      "id": "real_app",
+      "title": "Gitea: recorded on 1.19.4, replayed on 1.22.6",
+      "description": "A workflow recorded on gitea 1.19.4 and replayed on 1.22.6, each our own container pinned by digest. What counts as correct is a person's label for every acting step of 1.22.6, written from that release's own pages before Mendwork ran on it, approved against the screenshots of a walk that performed the task with the labels alone, and frozen by the labels' digest. Every system gets a freshly seeded instance, because the task ends by creating an issue.",
+      "cells": [
+        {
+          "cell": {
+            "type": "real_app",
+            "pair": "gitea 1.19.4 to 1.22.6",
+            "workflow_id": "gitea_new_issue_form",
+            "system": "css_selector"
+          },
+          "run_status": "failed",
+          "steps": [
+            {
+              "step_id": "fill_username_or_email_address",
+              "target_key": "fill_username_or_email_address",
+              "expectation": "act",
+              "changes": [],
+              "strength": "weak",
+              "outcome": "direct_correct",
+              "wrong": null,
+              "resolution": "direct",
+              "stop": "completed",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 1,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "fill_password",
+              "target_key": "fill_password",
+              "expectation": "act",
+              "changes": [],
+              "strength": "weak",
+              "outcome": "direct_correct",
+              "wrong": null,
+              "resolution": "direct",
+              "stop": "completed",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 1,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_sign_in",
+              "target_key": "click_sign_in",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "failed",
+              "wrong": null,
+              "resolution": null,
+              "stop": "unexpressible",
+              "stop_reason": "no css_selector locator",
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_bench_demo",
+              "target_key": "click_bench_demo",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_issues_1",
+              "target_key": "click_issues_1",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_new_issue",
+              "target_key": "click_new_issue",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "fill_title",
+              "target_key": "fill_title",
+              "expectation": "act",
+              "changes": [],
+              "strength": "weak",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_create_issue",
+              "target_key": "click_create_issue",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            }
+          ],
+          "run_failure": {
+            "step_id": "click_sign_in",
+            "action": "click",
+            "stop": "unexpressible",
+            "reason": "no css_selector locator",
+            "targeted": true
+          },
+          "model_calls": 0,
+          "timings": [
+            {
+              "step_id": "fill_username_or_email_address",
+              "duration_ms": 76
+            },
+            {
+              "step_id": "fill_password",
+              "duration_ms": 66
+            },
+            {
+              "step_id": "click_sign_in",
+              "duration_ms": 0
+            },
+            {
+              "step_id": "click_bench_demo",
+              "duration_ms": null
+            },
+            {
+              "step_id": "click_issues_1",
+              "duration_ms": null
+            },
+            {
+              "step_id": "click_new_issue",
+              "duration_ms": null
+            },
+            {
+              "step_id": "fill_title",
+              "duration_ms": null
+            },
+            {
+              "step_id": "click_create_issue",
+              "duration_ms": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "latency_ms": 0,
+            "cost_usd": "0",
+            "unpriced_calls": 0
+          },
+          "duration_ms": 780
+        },
+        {
+          "cell": {
+            "type": "real_app",
+            "pair": "gitea 1.19.4 to 1.22.6",
+            "workflow_id": "gitea_new_issue_form",
+            "system": "role_name"
+          },
+          "run_status": "failed",
+          "steps": [
+            {
+              "step_id": "fill_username_or_email_address",
+              "target_key": "fill_username_or_email_address",
+              "expectation": "act",
+              "changes": [],
+              "strength": "weak",
+              "outcome": "direct_correct",
+              "wrong": null,
+              "resolution": "direct",
+              "stop": "completed",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 1,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "fill_password",
+              "target_key": "fill_password",
+              "expectation": "act",
+              "changes": [],
+              "strength": "weak",
+              "outcome": "direct_correct",
+              "wrong": null,
+              "resolution": "direct",
+              "stop": "completed",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 1,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_sign_in",
+              "target_key": "click_sign_in",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "direct_correct",
+              "wrong": null,
+              "resolution": "direct",
+              "stop": "completed",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 1,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_bench_demo",
+              "target_key": "click_bench_demo",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "abstained_unnecessary",
+              "wrong": null,
+              "resolution": null,
+              "stop": "declined",
+              "stop_reason": "strict_mode_violation",
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_issues_1",
+              "target_key": "click_issues_1",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_new_issue",
+              "target_key": "click_new_issue",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "fill_title",
+              "target_key": "fill_title",
+              "expectation": "act",
+              "changes": [],
+              "strength": "weak",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_create_issue",
+              "target_key": "click_create_issue",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            }
+          ],
+          "run_failure": {
+            "step_id": "click_bench_demo",
+            "action": "click",
+            "stop": "declined",
+            "reason": "strict_mode_violation",
+            "targeted": true
+          },
+          "model_calls": 0,
+          "timings": [
+            {
+              "step_id": "fill_username_or_email_address",
+              "duration_ms": 52
+            },
+            {
+              "step_id": "fill_password",
+              "duration_ms": 67
+            },
+            {
+              "step_id": "click_sign_in",
+              "duration_ms": 256
+            },
+            {
+              "step_id": "click_bench_demo",
+              "duration_ms": 11
+            },
+            {
+              "step_id": "click_issues_1",
+              "duration_ms": null
+            },
+            {
+              "step_id": "click_new_issue",
+              "duration_ms": null
+            },
+            {
+              "step_id": "fill_title",
+              "duration_ms": null
+            },
+            {
+              "step_id": "click_create_issue",
+              "duration_ms": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "latency_ms": 0,
+            "cost_usd": "0",
+            "unpriced_calls": 0
+          },
+          "duration_ms": 599
+        },
+        {
+          "cell": {
+            "type": "real_app",
+            "pair": "gitea 1.19.4 to 1.22.6",
+            "workflow_id": "gitea_new_issue_form",
+            "system": "ladder_free"
+          },
+          "run_status": "failed",
+          "steps": [
+            {
+              "step_id": "fill_username_or_email_address",
+              "target_key": "fill_username_or_email_address",
+              "expectation": "act",
+              "changes": [],
+              "strength": "weak",
+              "outcome": "direct_correct",
+              "wrong": null,
+              "resolution": "direct",
+              "stop": "completed",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 1,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "fill_password",
+              "target_key": "fill_password",
+              "expectation": "act",
+              "changes": [],
+              "strength": "weak",
+              "outcome": "direct_correct",
+              "wrong": null,
+              "resolution": "direct",
+              "stop": "completed",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 1,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_sign_in",
+              "target_key": "click_sign_in",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "direct_correct",
+              "wrong": null,
+              "resolution": "direct",
+              "stop": "completed",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 1,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_bench_demo",
+              "target_key": "click_bench_demo",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "abstained_unnecessary",
+              "wrong": null,
+              "resolution": null,
+              "stop": "declined",
+              "stop_reason": "below_margin",
+              "ladder_ran": true,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_issues_1",
+              "target_key": "click_issues_1",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_new_issue",
+              "target_key": "click_new_issue",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "fill_title",
+              "target_key": "fill_title",
+              "expectation": "act",
+              "changes": [],
+              "strength": "weak",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_create_issue",
+              "target_key": "click_create_issue",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            }
+          ],
+          "run_failure": {
+            "step_id": "click_bench_demo",
+            "action": "click",
+            "stop": "declined",
+            "reason": "below_margin",
+            "targeted": true
+          },
+          "model_calls": 0,
+          "timings": [
+            {
+              "step_id": "fill_username_or_email_address",
+              "duration_ms": 129
+            },
+            {
+              "step_id": "fill_password",
+              "duration_ms": 148
+            },
+            {
+              "step_id": "click_sign_in",
+              "duration_ms": 285
+            },
+            {
+              "step_id": "click_bench_demo",
+              "duration_ms": 222
+            },
+            {
+              "step_id": "click_issues_1",
+              "duration_ms": null
+            },
+            {
+              "step_id": "click_new_issue",
+              "duration_ms": null
+            },
+            {
+              "step_id": "fill_title",
+              "duration_ms": null
+            },
+            {
+              "step_id": "click_create_issue",
+              "duration_ms": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "latency_ms": 0,
+            "cost_usd": "0",
+            "unpriced_calls": 0
+          },
+          "duration_ms": 1039
+        },
+        {
+          "cell": {
+            "type": "real_app",
+            "pair": "gitea 1.19.4 to 1.22.6",
+            "workflow_id": "gitea_new_issue_form",
+            "system": "ladder_ground_truth"
+          },
+          "run_status": "failed",
+          "steps": [
+            {
+              "step_id": "fill_username_or_email_address",
+              "target_key": "fill_username_or_email_address",
+              "expectation": "act",
+              "changes": [],
+              "strength": "weak",
+              "outcome": "direct_correct",
+              "wrong": null,
+              "resolution": "direct",
+              "stop": "completed",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 1,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "fill_password",
+              "target_key": "fill_password",
+              "expectation": "act",
+              "changes": [],
+              "strength": "weak",
+              "outcome": "direct_correct",
+              "wrong": null,
+              "resolution": "direct",
+              "stop": "completed",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 1,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_sign_in",
+              "target_key": "click_sign_in",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "direct_correct",
+              "wrong": null,
+              "resolution": "direct",
+              "stop": "completed",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 1,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_bench_demo",
+              "target_key": "click_bench_demo",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "healed_wrong",
+              "wrong": "caught",
+              "resolution": "rung_2",
+              "stop": "declined",
+              "stop_reason": "attempts_exhausted",
+              "ladder_ran": true,
+              "actions": 2,
+              "wrong_actions": 1,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_issues_1",
+              "target_key": "click_issues_1",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_new_issue",
+              "target_key": "click_new_issue",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "fill_title",
+              "target_key": "fill_title",
+              "expectation": "act",
+              "changes": [],
+              "strength": "weak",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            },
+            {
+              "step_id": "click_create_issue",
+              "target_key": "click_create_issue",
+              "expectation": "act",
+              "changes": [
+                "changed_by_the_release"
+              ],
+              "strength": "strong",
+              "outcome": "not_reached",
+              "wrong": null,
+              "resolution": null,
+              "stop": "not_reached",
+              "stop_reason": null,
+              "ladder_ran": false,
+              "actions": 0,
+              "wrong_actions": 0,
+              "unknown_actions": 0,
+              "proposal_on_target": null
+            }
+          ],
+          "run_failure": {
+            "step_id": "click_bench_demo",
+            "action": "click",
+            "stop": "declined",
+            "reason": "attempts_exhausted",
+            "targeted": true
+          },
+          "model_calls": 1,
+          "timings": [
+            {
+              "step_id": "fill_username_or_email_address",
+              "duration_ms": 115
+            },
+            {
+              "step_id": "fill_password",
+              "duration_ms": 132
+            },
+            {
+              "step_id": "click_sign_in",
+              "duration_ms": 270
+            },
+            {
+              "step_id": "click_bench_demo",
+              "duration_ms": 21098
+            },
+            {
+              "step_id": "click_issues_1",
+              "duration_ms": null
+            },
+            {
+              "step_id": "click_new_issue",
+              "duration_ms": null
+            },
+            {
+              "step_id": "fill_title",
+              "duration_ms": null
+            },
+            {
+              "step_id": "click_create_issue",
+              "duration_ms": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "latency_ms": 0,
+            "cost_usd": "0",
+            "unpriced_calls": 0
+          },
+          "duration_ms": 21865
+        }
+      ],
+      "systems": [
+        {
+          "system": "css_selector",
+          "overall": {
+            "steps": 8,
+            "reached": 3,
+            "counts": {
+              "healed_wrong": 0,
+              "direct_wrong": 0,
+              "abstained_correct": 0,
+              "abstained_unnecessary": 0,
+              "healed_correct": 0,
+              "direct_correct": 2,
+              "failed": 1,
+              "approval_requested": 0,
+              "ground_truth_unknown": 0,
+              "not_reached": 5
+            },
+            "wrong_action_rate": {
+              "numerator": 0,
+              "denominator": 3
+            },
+            "false_successes": 0,
+            "caught_wrong": 0,
+            "wrong_actions": 0,
+            "unjudged_rate": {
+              "numerator": 0,
+              "denominator": 3
+            },
+            "unknown_actions": 0,
+            "actions_checked": 2,
+            "changed_step_completion": {
+              "numerator": 0,
+              "denominator": 1
+            },
+            "heal_success": {
+              "numerator": 0,
+              "denominator": 0
+            },
+            "correct_abstain": {
+              "numerator": 0,
+              "denominator": 0
+            },
+            "unnecessary_abstain": {
+              "numerator": 0,
+              "denominator": 3
+            },
+            "resolutions": {
+              "direct": 2,
+              "rung_1": 0,
+              "rung_2": 0,
+              "rung_3": 0
+            },
+            "strengths": {
+              "strong": 1,
+              "weak": 2,
+              "none": 0
+            },
+            "stop_reasons": [
+              {
+                "reason": "no css_selector locator",
+                "count": 1
+              }
+            ]
+          },
+          "groups": [
+            {
+              "group": "gitea 1.19.4 to 1.22.6",
+              "metrics": {
+                "steps": 8,
+                "reached": 3,
+                "counts": {
+                  "healed_wrong": 0,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 0,
+                  "healed_correct": 0,
+                  "direct_correct": 2,
+                  "failed": 1,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 5
+                },
+                "wrong_action_rate": {
+                  "numerator": 0,
+                  "denominator": 3
+                },
+                "false_successes": 0,
+                "caught_wrong": 0,
+                "wrong_actions": 0,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 3
+                },
+                "unknown_actions": 0,
+                "actions_checked": 2,
+                "changed_step_completion": {
+                  "numerator": 0,
+                  "denominator": 1
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 0,
+                  "denominator": 3
+                },
+                "resolutions": {
+                  "direct": 2,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 1,
+                  "weak": 2,
+                  "none": 0
+                },
+                "stop_reasons": [
+                  {
+                    "reason": "no css_selector locator",
+                    "count": 1
+                  }
+                ]
+              }
+            }
+          ],
+          "by_strength": [
+            {
+              "group": "strong",
+              "metrics": {
+                "steps": 5,
+                "reached": 1,
+                "counts": {
+                  "healed_wrong": 0,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 0,
+                  "healed_correct": 0,
+                  "direct_correct": 0,
+                  "failed": 1,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 4
+                },
+                "wrong_action_rate": {
+                  "numerator": 0,
+                  "denominator": 1
+                },
+                "false_successes": 0,
+                "caught_wrong": 0,
+                "wrong_actions": 0,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 1
+                },
+                "unknown_actions": 0,
+                "actions_checked": 0,
+                "changed_step_completion": {
+                  "numerator": 0,
+                  "denominator": 1
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 0,
+                  "denominator": 1
+                },
+                "resolutions": {
+                  "direct": 0,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 1,
+                  "weak": 0,
+                  "none": 0
+                },
+                "stop_reasons": [
+                  {
+                    "reason": "no css_selector locator",
+                    "count": 1
+                  }
+                ]
+              }
+            },
+            {
+              "group": "weak",
+              "metrics": {
+                "steps": 3,
+                "reached": 2,
+                "counts": {
+                  "healed_wrong": 0,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 0,
+                  "healed_correct": 0,
+                  "direct_correct": 2,
+                  "failed": 0,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 1
+                },
+                "wrong_action_rate": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "false_successes": 0,
+                "caught_wrong": 0,
+                "wrong_actions": 0,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "unknown_actions": 0,
+                "actions_checked": 2,
+                "changed_step_completion": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "resolutions": {
+                  "direct": 2,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 0,
+                  "weak": 2,
+                  "none": 0
+                },
+                "stop_reasons": []
+              }
+            },
+            {
+              "group": "none",
+              "metrics": {
+                "steps": 0,
+                "reached": 0,
+                "counts": {
+                  "healed_wrong": 0,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 0,
+                  "healed_correct": 0,
+                  "direct_correct": 0,
+                  "failed": 0,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 0
+                },
+                "wrong_action_rate": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "false_successes": 0,
+                "caught_wrong": 0,
+                "wrong_actions": 0,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unknown_actions": 0,
+                "actions_checked": 0,
+                "changed_step_completion": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "resolutions": {
+                  "direct": 0,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 0,
+                  "weak": 0,
+                  "none": 0
+                },
+                "stop_reasons": []
+              }
+            }
+          ],
+          "latency": {
+            "all": {
+              "count": 3,
+              "p50_ms": 66,
+              "p95_ms": 76
+            },
+            "direct": {
+              "count": 2,
+              "p50_ms": 66,
+              "p95_ms": 76
+            },
+            "healed": {
+              "count": 0,
+              "p50_ms": null,
+              "p95_ms": null
+            },
+            "stopped": {
+              "count": 1,
+              "p50_ms": 0,
+              "p95_ms": 0
+            }
+          },
+          "runs": {
+            "runs": 1,
+            "succeeded": 0,
+            "model_calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "model_latency_ms": 0,
+            "cost_usd": "0",
+            "unpriced_calls": 0
+          },
+          "failures": [
+            {
+              "step_id": "click_sign_in",
+              "reason": "no css_selector locator",
+              "count": 1,
+              "targeted": true
+            }
+          ]
+        },
+        {
+          "system": "role_name",
+          "overall": {
+            "steps": 8,
+            "reached": 4,
+            "counts": {
+              "healed_wrong": 0,
+              "direct_wrong": 0,
+              "abstained_correct": 0,
+              "abstained_unnecessary": 1,
+              "healed_correct": 0,
+              "direct_correct": 3,
+              "failed": 0,
+              "approval_requested": 0,
+              "ground_truth_unknown": 0,
+              "not_reached": 4
+            },
+            "wrong_action_rate": {
+              "numerator": 0,
+              "denominator": 4
+            },
+            "false_successes": 0,
+            "caught_wrong": 0,
+            "wrong_actions": 0,
+            "unjudged_rate": {
+              "numerator": 0,
+              "denominator": 4
+            },
+            "unknown_actions": 0,
+            "actions_checked": 3,
+            "changed_step_completion": {
+              "numerator": 1,
+              "denominator": 2
+            },
+            "heal_success": {
+              "numerator": 0,
+              "denominator": 0
+            },
+            "correct_abstain": {
+              "numerator": 0,
+              "denominator": 0
+            },
+            "unnecessary_abstain": {
+              "numerator": 1,
+              "denominator": 4
+            },
+            "resolutions": {
+              "direct": 3,
+              "rung_1": 0,
+              "rung_2": 0,
+              "rung_3": 0
+            },
+            "strengths": {
+              "strong": 2,
+              "weak": 2,
+              "none": 0
+            },
+            "stop_reasons": [
+              {
+                "reason": "strict_mode_violation",
+                "count": 1
+              }
+            ]
+          },
+          "groups": [
+            {
+              "group": "gitea 1.19.4 to 1.22.6",
+              "metrics": {
+                "steps": 8,
+                "reached": 4,
+                "counts": {
+                  "healed_wrong": 0,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 1,
+                  "healed_correct": 0,
+                  "direct_correct": 3,
+                  "failed": 0,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 4
+                },
+                "wrong_action_rate": {
+                  "numerator": 0,
+                  "denominator": 4
+                },
+                "false_successes": 0,
+                "caught_wrong": 0,
+                "wrong_actions": 0,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 4
+                },
+                "unknown_actions": 0,
+                "actions_checked": 3,
+                "changed_step_completion": {
+                  "numerator": 1,
+                  "denominator": 2
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 1,
+                  "denominator": 4
+                },
+                "resolutions": {
+                  "direct": 3,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 2,
+                  "weak": 2,
+                  "none": 0
+                },
+                "stop_reasons": [
+                  {
+                    "reason": "strict_mode_violation",
+                    "count": 1
+                  }
+                ]
+              }
+            }
+          ],
+          "by_strength": [
+            {
+              "group": "strong",
+              "metrics": {
+                "steps": 5,
+                "reached": 2,
+                "counts": {
+                  "healed_wrong": 0,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 1,
+                  "healed_correct": 0,
+                  "direct_correct": 1,
+                  "failed": 0,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 3
+                },
+                "wrong_action_rate": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "false_successes": 0,
+                "caught_wrong": 0,
+                "wrong_actions": 0,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "unknown_actions": 0,
+                "actions_checked": 1,
+                "changed_step_completion": {
+                  "numerator": 1,
+                  "denominator": 2
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 1,
+                  "denominator": 2
+                },
+                "resolutions": {
+                  "direct": 1,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 2,
+                  "weak": 0,
+                  "none": 0
+                },
+                "stop_reasons": [
+                  {
+                    "reason": "strict_mode_violation",
+                    "count": 1
+                  }
+                ]
+              }
+            },
+            {
+              "group": "weak",
+              "metrics": {
+                "steps": 3,
+                "reached": 2,
+                "counts": {
+                  "healed_wrong": 0,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 0,
+                  "healed_correct": 0,
+                  "direct_correct": 2,
+                  "failed": 0,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 1
+                },
+                "wrong_action_rate": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "false_successes": 0,
+                "caught_wrong": 0,
+                "wrong_actions": 0,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "unknown_actions": 0,
+                "actions_checked": 2,
+                "changed_step_completion": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "resolutions": {
+                  "direct": 2,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 0,
+                  "weak": 2,
+                  "none": 0
+                },
+                "stop_reasons": []
+              }
+            },
+            {
+              "group": "none",
+              "metrics": {
+                "steps": 0,
+                "reached": 0,
+                "counts": {
+                  "healed_wrong": 0,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 0,
+                  "healed_correct": 0,
+                  "direct_correct": 0,
+                  "failed": 0,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 0
+                },
+                "wrong_action_rate": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "false_successes": 0,
+                "caught_wrong": 0,
+                "wrong_actions": 0,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unknown_actions": 0,
+                "actions_checked": 0,
+                "changed_step_completion": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "resolutions": {
+                  "direct": 0,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 0,
+                  "weak": 0,
+                  "none": 0
+                },
+                "stop_reasons": []
+              }
+            }
+          ],
+          "latency": {
+            "all": {
+              "count": 4,
+              "p50_ms": 52,
+              "p95_ms": 256
+            },
+            "direct": {
+              "count": 3,
+              "p50_ms": 67,
+              "p95_ms": 256
+            },
+            "healed": {
+              "count": 0,
+              "p50_ms": null,
+              "p95_ms": null
+            },
+            "stopped": {
+              "count": 1,
+              "p50_ms": 11,
+              "p95_ms": 11
+            }
+          },
+          "runs": {
+            "runs": 1,
+            "succeeded": 0,
+            "model_calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "model_latency_ms": 0,
+            "cost_usd": "0",
+            "unpriced_calls": 0
+          },
+          "failures": [
+            {
+              "step_id": "click_bench_demo",
+              "reason": "strict_mode_violation",
+              "count": 1,
+              "targeted": true
+            }
+          ]
+        },
+        {
+          "system": "ladder_free",
+          "overall": {
+            "steps": 8,
+            "reached": 4,
+            "counts": {
+              "healed_wrong": 0,
+              "direct_wrong": 0,
+              "abstained_correct": 0,
+              "abstained_unnecessary": 1,
+              "healed_correct": 0,
+              "direct_correct": 3,
+              "failed": 0,
+              "approval_requested": 0,
+              "ground_truth_unknown": 0,
+              "not_reached": 4
+            },
+            "wrong_action_rate": {
+              "numerator": 0,
+              "denominator": 4
+            },
+            "false_successes": 0,
+            "caught_wrong": 0,
+            "wrong_actions": 0,
+            "unjudged_rate": {
+              "numerator": 0,
+              "denominator": 4
+            },
+            "unknown_actions": 0,
+            "actions_checked": 3,
+            "changed_step_completion": {
+              "numerator": 1,
+              "denominator": 2
+            },
+            "heal_success": {
+              "numerator": 0,
+              "denominator": 1
+            },
+            "correct_abstain": {
+              "numerator": 0,
+              "denominator": 0
+            },
+            "unnecessary_abstain": {
+              "numerator": 1,
+              "denominator": 4
+            },
+            "resolutions": {
+              "direct": 3,
+              "rung_1": 0,
+              "rung_2": 0,
+              "rung_3": 0
+            },
+            "strengths": {
+              "strong": 2,
+              "weak": 2,
+              "none": 0
+            },
+            "stop_reasons": [
+              {
+                "reason": "below_margin",
+                "count": 1
+              }
+            ]
+          },
+          "groups": [
+            {
+              "group": "gitea 1.19.4 to 1.22.6",
+              "metrics": {
+                "steps": 8,
+                "reached": 4,
+                "counts": {
+                  "healed_wrong": 0,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 1,
+                  "healed_correct": 0,
+                  "direct_correct": 3,
+                  "failed": 0,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 4
+                },
+                "wrong_action_rate": {
+                  "numerator": 0,
+                  "denominator": 4
+                },
+                "false_successes": 0,
+                "caught_wrong": 0,
+                "wrong_actions": 0,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 4
+                },
+                "unknown_actions": 0,
+                "actions_checked": 3,
+                "changed_step_completion": {
+                  "numerator": 1,
+                  "denominator": 2
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 1
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 1,
+                  "denominator": 4
+                },
+                "resolutions": {
+                  "direct": 3,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 2,
+                  "weak": 2,
+                  "none": 0
+                },
+                "stop_reasons": [
+                  {
+                    "reason": "below_margin",
+                    "count": 1
+                  }
+                ]
+              }
+            }
+          ],
+          "by_strength": [
+            {
+              "group": "strong",
+              "metrics": {
+                "steps": 5,
+                "reached": 2,
+                "counts": {
+                  "healed_wrong": 0,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 1,
+                  "healed_correct": 0,
+                  "direct_correct": 1,
+                  "failed": 0,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 3
+                },
+                "wrong_action_rate": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "false_successes": 0,
+                "caught_wrong": 0,
+                "wrong_actions": 0,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "unknown_actions": 0,
+                "actions_checked": 1,
+                "changed_step_completion": {
+                  "numerator": 1,
+                  "denominator": 2
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 1
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 1,
+                  "denominator": 2
+                },
+                "resolutions": {
+                  "direct": 1,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 2,
+                  "weak": 0,
+                  "none": 0
+                },
+                "stop_reasons": [
+                  {
+                    "reason": "below_margin",
+                    "count": 1
+                  }
+                ]
+              }
+            },
+            {
+              "group": "weak",
+              "metrics": {
+                "steps": 3,
+                "reached": 2,
+                "counts": {
+                  "healed_wrong": 0,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 0,
+                  "healed_correct": 0,
+                  "direct_correct": 2,
+                  "failed": 0,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 1
+                },
+                "wrong_action_rate": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "false_successes": 0,
+                "caught_wrong": 0,
+                "wrong_actions": 0,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "unknown_actions": 0,
+                "actions_checked": 2,
+                "changed_step_completion": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "resolutions": {
+                  "direct": 2,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 0,
+                  "weak": 2,
+                  "none": 0
+                },
+                "stop_reasons": []
+              }
+            },
+            {
+              "group": "none",
+              "metrics": {
+                "steps": 0,
+                "reached": 0,
+                "counts": {
+                  "healed_wrong": 0,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 0,
+                  "healed_correct": 0,
+                  "direct_correct": 0,
+                  "failed": 0,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 0
+                },
+                "wrong_action_rate": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "false_successes": 0,
+                "caught_wrong": 0,
+                "wrong_actions": 0,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unknown_actions": 0,
+                "actions_checked": 0,
+                "changed_step_completion": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "resolutions": {
+                  "direct": 0,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 0,
+                  "weak": 0,
+                  "none": 0
+                },
+                "stop_reasons": []
+              }
+            }
+          ],
+          "latency": {
+            "all": {
+              "count": 4,
+              "p50_ms": 148,
+              "p95_ms": 285
+            },
+            "direct": {
+              "count": 3,
+              "p50_ms": 148,
+              "p95_ms": 285
+            },
+            "healed": {
+              "count": 0,
+              "p50_ms": null,
+              "p95_ms": null
+            },
+            "stopped": {
+              "count": 1,
+              "p50_ms": 222,
+              "p95_ms": 222
+            }
+          },
+          "runs": {
+            "runs": 1,
+            "succeeded": 0,
+            "model_calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "model_latency_ms": 0,
+            "cost_usd": "0",
+            "unpriced_calls": 0
+          },
+          "failures": [
+            {
+              "step_id": "click_bench_demo",
+              "reason": "below_margin",
+              "count": 1,
+              "targeted": true
+            }
+          ]
+        },
+        {
+          "system": "ladder_ground_truth",
+          "overall": {
+            "steps": 8,
+            "reached": 4,
+            "counts": {
+              "healed_wrong": 1,
+              "direct_wrong": 0,
+              "abstained_correct": 0,
+              "abstained_unnecessary": 0,
+              "healed_correct": 0,
+              "direct_correct": 3,
+              "failed": 0,
+              "approval_requested": 0,
+              "ground_truth_unknown": 0,
+              "not_reached": 4
+            },
+            "wrong_action_rate": {
+              "numerator": 1,
+              "denominator": 4
+            },
+            "false_successes": 0,
+            "caught_wrong": 1,
+            "wrong_actions": 1,
+            "unjudged_rate": {
+              "numerator": 0,
+              "denominator": 4
+            },
+            "unknown_actions": 0,
+            "actions_checked": 5,
+            "changed_step_completion": {
+              "numerator": 1,
+              "denominator": 2
+            },
+            "heal_success": {
+              "numerator": 0,
+              "denominator": 1
+            },
+            "correct_abstain": {
+              "numerator": 0,
+              "denominator": 0
+            },
+            "unnecessary_abstain": {
+              "numerator": 0,
+              "denominator": 4
+            },
+            "resolutions": {
+              "direct": 3,
+              "rung_1": 0,
+              "rung_2": 0,
+              "rung_3": 0
+            },
+            "strengths": {
+              "strong": 2,
+              "weak": 2,
+              "none": 0
+            },
+            "stop_reasons": [
+              {
+                "reason": "attempts_exhausted",
+                "count": 1
+              }
+            ]
+          },
+          "groups": [
+            {
+              "group": "gitea 1.19.4 to 1.22.6",
+              "metrics": {
+                "steps": 8,
+                "reached": 4,
+                "counts": {
+                  "healed_wrong": 1,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 0,
+                  "healed_correct": 0,
+                  "direct_correct": 3,
+                  "failed": 0,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 4
+                },
+                "wrong_action_rate": {
+                  "numerator": 1,
+                  "denominator": 4
+                },
+                "false_successes": 0,
+                "caught_wrong": 1,
+                "wrong_actions": 1,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 4
+                },
+                "unknown_actions": 0,
+                "actions_checked": 5,
+                "changed_step_completion": {
+                  "numerator": 1,
+                  "denominator": 2
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 1
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 0,
+                  "denominator": 4
+                },
+                "resolutions": {
+                  "direct": 3,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 2,
+                  "weak": 2,
+                  "none": 0
+                },
+                "stop_reasons": [
+                  {
+                    "reason": "attempts_exhausted",
+                    "count": 1
+                  }
+                ]
+              }
+            }
+          ],
+          "by_strength": [
+            {
+              "group": "strong",
+              "metrics": {
+                "steps": 5,
+                "reached": 2,
+                "counts": {
+                  "healed_wrong": 1,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 0,
+                  "healed_correct": 0,
+                  "direct_correct": 1,
+                  "failed": 0,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 3
+                },
+                "wrong_action_rate": {
+                  "numerator": 1,
+                  "denominator": 2
+                },
+                "false_successes": 0,
+                "caught_wrong": 1,
+                "wrong_actions": 1,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "unknown_actions": 0,
+                "actions_checked": 3,
+                "changed_step_completion": {
+                  "numerator": 1,
+                  "denominator": 2
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 1
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "resolutions": {
+                  "direct": 1,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 2,
+                  "weak": 0,
+                  "none": 0
+                },
+                "stop_reasons": [
+                  {
+                    "reason": "attempts_exhausted",
+                    "count": 1
+                  }
+                ]
+              }
+            },
+            {
+              "group": "weak",
+              "metrics": {
+                "steps": 3,
+                "reached": 2,
+                "counts": {
+                  "healed_wrong": 0,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 0,
+                  "healed_correct": 0,
+                  "direct_correct": 2,
+                  "failed": 0,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 1
+                },
+                "wrong_action_rate": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "false_successes": 0,
+                "caught_wrong": 0,
+                "wrong_actions": 0,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "unknown_actions": 0,
+                "actions_checked": 2,
+                "changed_step_completion": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 0,
+                  "denominator": 2
+                },
+                "resolutions": {
+                  "direct": 2,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 0,
+                  "weak": 2,
+                  "none": 0
+                },
+                "stop_reasons": []
+              }
+            },
+            {
+              "group": "none",
+              "metrics": {
+                "steps": 0,
+                "reached": 0,
+                "counts": {
+                  "healed_wrong": 0,
+                  "direct_wrong": 0,
+                  "abstained_correct": 0,
+                  "abstained_unnecessary": 0,
+                  "healed_correct": 0,
+                  "direct_correct": 0,
+                  "failed": 0,
+                  "approval_requested": 0,
+                  "ground_truth_unknown": 0,
+                  "not_reached": 0
+                },
+                "wrong_action_rate": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "false_successes": 0,
+                "caught_wrong": 0,
+                "wrong_actions": 0,
+                "unjudged_rate": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unknown_actions": 0,
+                "actions_checked": 0,
+                "changed_step_completion": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "heal_success": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "correct_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "unnecessary_abstain": {
+                  "numerator": 0,
+                  "denominator": 0
+                },
+                "resolutions": {
+                  "direct": 0,
+                  "rung_1": 0,
+                  "rung_2": 0,
+                  "rung_3": 0
+                },
+                "strengths": {
+                  "strong": 0,
+                  "weak": 0,
+                  "none": 0
+                },
+                "stop_reasons": []
+              }
+            }
+          ],
+          "latency": {
+            "all": {
+              "count": 4,
+              "p50_ms": 132,
+              "p95_ms": 21098
+            },
+            "direct": {
+              "count": 3,
+              "p50_ms": 132,
+              "p95_ms": 270
+            },
+            "healed": {
+              "count": 0,
+              "p50_ms": null,
+              "p95_ms": null
+            },
+            "stopped": {
+              "count": 1,
+              "p50_ms": 21098,
+              "p95_ms": 21098
+            }
+          },
+          "runs": {
+            "runs": 1,
+            "succeeded": 0,
+            "model_calls": 1,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "model_latency_ms": 0,
+            "cost_usd": "0",
+            "unpriced_calls": 0
+          },
+          "failures": [
+            {
+              "step_id": "click_bench_demo",
+              "reason": "attempts_exhausted",
+              "count": 1,
+              "targeted": true
+            }
+          ]
+        }
+      ],
+      "outcomes_digest": "sha256:e19016ea6f90438f15a2ec56f9e77a4296ed968cf13d3213a56bc7c009cf3173"
+    }
+  ],
+  "skipped": []
+}

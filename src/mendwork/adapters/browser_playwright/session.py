@@ -453,6 +453,15 @@ class PlaywrightSession:
         """
         return self._handle(element)
 
+    def pin_handle(self, handle: ElementHandle) -> ElementRef:
+        """Pin a Playwright handle a harness found itself, so the port's checks can read it.
+
+        The benchmark's script baselines locate elements with plain Playwright locators, as a
+        hand-written script does, and still verify with the engine's own checkpoints (ADR 0014).
+        The engine never calls this: it only ever receives refs the adapter resolved.
+        """
+        return self._pin(handle)
+
     # Internals.
 
     async def _identity(self, handle: ElementHandle) -> ElementIdentity:

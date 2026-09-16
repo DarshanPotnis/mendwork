@@ -26,8 +26,10 @@ PACKAGES: Final = (
     "src/mendwork/engine/healing/",
     "src/mendwork/engine/patching/",
     "src/mendwork/engine/reporting/",
+    "src/mendwork/engine/benchmark/",
 )
 UNIT_TESTS: Final = (
+    "tests/unit/benchmark",
     "tests/unit/replay",
     "tests/unit/recording",
     "tests/unit/safety",

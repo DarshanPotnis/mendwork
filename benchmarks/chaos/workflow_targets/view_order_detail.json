@@ -6,5 +6,12 @@
     "sign_in": "login.sign_in",
     "open_orders": "dashboard.nav_orders",
     "view_po_1042": "orders.view_order"
+  },
+  "inputs": {
+    "portal_url": "{portal}index.html?seed={seed}&level={level}",
+    "account_email": "buyer@harborline.test"
+  },
+  "secrets": {
+    "portal_password": "harbor-demo"
   }
 }

@@ -1,0 +1,27 @@
+{
+  "labels_digest": "sha256:0eda673bb8c9a0e2d33489e2e6aa5268abe67b1936a2ab84d725c4e6e52c1587",
+  "approved_by": "Darshan Potnis (repository owner)",
+  "approved_at": "2026-09-16T01:17:52.989258Z",
+  "walked": [
+    "open_sign_in_gitea_git_with_a_cup_of_tea",
+    "fill_username_or_email_address",
+    "fill_password",
+    "click_sign_in",
+    "click_bench_demo",
+    "click_issues_1",
+    "click_new_issue",
+    "fill_title",
+    "click_create_issue"
+  ],
+  "screenshots": {
+    "open_sign_in_gitea_git_with_a_cup_of_tea": "sha256:e054e67b29da4bef8020cd0d89b09790f9c781c2d63447078c1d437758d231db",
+    "fill_username_or_email_address": "sha256:318544dfbbc2dfa24ab707b5675d9cc26eee91a54623ac26de621ba8f69a2151",
+    "fill_password": "sha256:dd8a14f7545250e41a78b2a81507b980051c296821fe09113169ce47fb3cb8a8",
+    "click_sign_in": "sha256:ffd0e4df5c6bcf21a9588516e4865145316b5217004976365b77a412d1ca9cad",
+    "click_bench_demo": "sha256:4b3fc42214609237e43ece8048ebeb40348502db7b3f0ee9e1dde439c7bfc88f",
+    "click_issues_1": "sha256:f026065f731c6319484cd583024f542c3c659fbfef861a90ecb8140db10c1d95",
+    "click_new_issue": "sha256:ee3c90e69271d9d8bbbee52f54a266cb8beb33baa1923003acce3c1e8df6abcb",
+    "fill_title": "sha256:29f48137df9e73a74ebaa7757ab6bbde94d0f24bee0f9df767ced3bbc1d250ee",
+    "click_create_issue": "sha256:ceedcb932fa52b0cebb127d976ae3ce940a51b8efb60df8bad023030b932b948"
+  }
+}

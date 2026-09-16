@@ -7,6 +7,7 @@ import pytest
 from typer.testing import CliRunner, Result
 
 from mendwork.apps.cli.main import app
+from mendwork.engine.benchmark.results import results_json_schema_text
 from mendwork.engine.domain.json_schema import workflow_json_schema_text
 from tests.workflows import EXAMPLE_IDS, example_path
 
@@ -117,3 +118,18 @@ def test_schema_writes_the_generated_schema(
     assert result.exit_code == 0
     assert plain_stdout(result) == f"wrote {output}\n"
     assert output.read_text(encoding="utf-8") == workflow_json_schema_text()
+
+
+def test_schema_also_writes_the_benchmark_results_schema_when_asked(
+    plain_stdout: Callable[[Result], str], tmp_path: Path
+) -> None:
+    output = tmp_path / "workflow.schema.json"
+    results = tmp_path / "bench-results.schema.json"
+
+    result = CliRunner().invoke(
+        app, ["schema", "--output", str(output), "--results-output", str(results)]
+    )
+
+    assert result.exit_code == 0
+    assert plain_stdout(result) == f"wrote {output}\nwrote {results}\n"
+    assert results.read_text(encoding="utf-8") == results_json_schema_text()

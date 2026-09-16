@@ -1,0 +1,300 @@
+schema_version: 1
+workflow_id: gitea_new_issue_form
+version: 1
+created_at: '2026-09-16T01:11:14Z'
+inputs:
+  - name: start_url
+    kind: url
+    description: URL of the page the workflow starts on (recorded at /user/login)
+  - name: user_name
+    kind: text
+    description: Username typed into the 'Username or Email Address' field
+secrets:
+  - gitea_password
+steps:
+  - id: open_sign_in_gitea_git_with_a_cup_of_tea
+    intent: 'Open the ''Sign In - Gitea: Git with a cup of tea'' page'
+    action: navigate
+    risk: safe
+    value:
+      kind: input
+      name: start_url
+    checkpoints:
+      - kind: element_visible
+        selector:
+          strategy: role_name
+          role: heading
+          name: Sign In
+  - id: fill_username_or_email_address
+    intent: Fill the 'Username or Email Address' field
+    action: fill
+    risk: caution
+    target:
+      tag: input
+      role: textbox
+      accessible_name: Username or Email Address *
+      label_text: Username or Email Address
+      attributes:
+        id: user_name
+        name: user_name
+        type: text
+      nearby_text:
+        - Sign In
+      structural_path: div > div > div > div > div > form > div > input
+      bbox:
+        x: 0.3953
+        y: 0.1798
+        width: 0.3117
+        height: 0.0528
+      selectors:
+        - strategy: role_name
+          role: textbox
+          name: Username or Email Address *
+        - strategy: label
+          value: Username or Email Address
+        - strategy: css
+          value: '#user_name'
+    value:
+      kind: input
+      name: user_name
+    checkpoints:
+      - kind: field_has_value
+  - id: fill_password
+    intent: Fill the 'Password' field
+    action: fill
+    risk: caution
+    target:
+      tag: input
+      role: textbox
+      accessible_name: Password *
+      label_text: Password
+      attributes:
+        id: password
+        name: password
+        type: password
+        autocomplete: current-password
+      nearby_text:
+        - Sign In
+      structural_path: div > div > div > div > div > form > div > input
+      bbox:
+        x: 0.3953
+        y: 0.252
+        width: 0.3117
+        height: 0.0528
+      selectors:
+        - strategy: role_name
+          role: textbox
+          name: Password *
+        - strategy: label
+          value: Password
+        - strategy: css
+          value: '#password'
+    value:
+      kind: secret
+      name: gitea_password
+    checkpoints:
+      - kind: field_has_value
+  - id: click_sign_in
+    intent: Click the 'Sign In' button
+    action: click
+    risk: caution
+    target:
+      tag: button
+      role: button
+      accessible_name: Sign In
+      text: Sign In
+      nearby_text:
+        - Sign In
+      structural_path: div > div > div > div > div > form > div > button
+      bbox:
+        x: 0.3953
+        y: 0.3715
+        width: 0.0687
+        height: 0.0528
+      selectors:
+        - strategy: role_name
+          role: button
+          name: Sign In
+    checkpoints:
+      - kind: url_matches
+        mode: regex
+        pattern: https?://[^?#]+/(?:[?#].*)?
+      - kind: element_visible
+        selector:
+          strategy: role_name
+          role: heading
+          name: Repositories 1 New Repository
+      - kind: no_error_banner
+  - id: click_bench_demo
+    intent: Click the 'bench/demo' link
+    action: click
+    risk: safe
+    target:
+      tag: a
+      role: link
+      accessible_name: bench/demo
+      text: bench/demo
+      attributes:
+        href: /bench/demo
+      structural_path: div > div > div > div > div > div > div > div > div > p > a
+      bbox:
+        x: 0.2224
+        y: 0.4192
+        width: 0.063
+        height: 0.0236
+      selectors:
+        - strategy: role_name
+          role: link
+          name: bench/demo
+    checkpoints:
+      - kind: url_matches
+        mode: regex
+        pattern: https?://[^?#]+/bench/demo(?:[?#].*)?
+      - kind: element_visible
+        selector:
+          strategy: role_name
+          role: heading
+          name: bench / demo RSS Feed
+  - id: click_issues_1
+    intent: Click the 'Issues 1' link
+    action: click
+    risk: safe
+    target:
+      tag: a
+      role: link
+      accessible_name: Issues 1
+      text: Issues 1
+      attributes:
+        href: /bench/demo/issues
+      nearby_text:
+        - bench / demo
+      structural_path: div > div > div > div > div > a
+      bbox:
+        x: 0.1237
+        y: 0.1678
+        width: 0.0949
+        height: 0.0565
+      selectors:
+        - strategy: role_name
+          role: link
+          name: Issues 1
+        - strategy: role_name
+          role: link
+          name: Issues
+          exact: false
+          within:
+            strategy: role_name
+            role: main
+            name: 'bench/demo: Benchmark fixture'
+        - strategy: text
+          value: Issues 1
+    checkpoints:
+      - kind: url_matches
+        mode: regex
+        pattern: https?://[^?#]+/bench/demo/issues(?:[?#].*)?
+      - kind: element_visible
+        selector:
+          strategy: role_name
+          role: heading
+          name: Labels Milestones
+  - id: click_new_issue
+    intent: Click the 'New Issue' link
+    action: click
+    risk: safe
+    target:
+      tag: a
+      role: link
+      accessible_name: New Issue
+      text: New Issue
+      attributes:
+        href: /bench/demo/issues/new
+      nearby_text:
+        - Labels Milestones
+      structural_path: div > div > div > div > div > a
+      bbox:
+        x: 0.8503
+        y: 0.2571
+        width: 0.0872
+        height: 0.0528
+      selectors:
+        - strategy: role_name
+          role: link
+          name: New Issue
+        - strategy: text
+          value: New Issue
+    checkpoints:
+      - kind: url_matches
+        mode: regex
+        pattern: https?://[^?#]+/bench/demo/issues/new(?:[?#].*)?
+      - kind: element_visible
+        selector:
+          strategy: role_name
+          role: main
+          name: New Issue
+  - id: fill_title
+    intent: Fill the 'Title' field
+    action: fill
+    risk: caution
+    target:
+      tag: input
+      role: textbox
+      accessible_name: Title
+      attributes:
+        id: issue_title
+        name: title
+        autocomplete: 'off'
+        placeholder: Title
+      nearby_text:
+        - Labels Milestones
+      structural_path: div > div > div > form > div > div > div > div > div > input
+      bbox:
+        x: 0.1152
+        y: 0.2683
+        width: 0.5713
+        height: 0.0377
+      selectors:
+        - strategy: role_name
+          role: textbox
+          name: Title
+        - strategy: placeholder
+          value: Title
+        - strategy: css
+          value: '#issue_title'
+    value:
+      kind: literal
+      value: Benchmark issue
+    checkpoints:
+      - kind: field_has_value
+  - id: click_create_issue
+    intent: Click the 'Create Issue' button
+    action: click
+    risk: irreversible
+    target:
+      tag: button
+      role: button
+      accessible_name: Create Issue
+      text: Create Issue
+      nearby_text:
+        - Labels Milestones
+      structural_path: div > div > div > form > div > div > div > div > div > button
+      bbox:
+        x: 0.5893
+        y: 0.8286
+        width: 0.0972
+        height: 0.0377
+      selectors:
+        - strategy: role_name
+          role: button
+          name: Create Issue
+        - strategy: text
+          value: Create Issue
+    checkpoints:
+      - kind: url_matches
+        mode: regex
+        pattern: https?://[^?#]+/bench/demo/issues/2(?:[?#].*)?
+      - kind: element_visible
+        selector:
+          strategy: role_name
+          role: heading
+          name: 'Benchmark issue #2'
+      - kind: no_error_banner

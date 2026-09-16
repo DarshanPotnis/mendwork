@@ -1,0 +1,14 @@
+{
+  "purpose": "The seeds and levels of the published chaos benchmark (ADR 0014), fixed before any benchmark ran.",
+  "chosen_on": "2026-09-15",
+  "rule": "The first 20 seeds from 1000 upward, at levels 2, 3, and 5. Development used seeds 0-299 at level 3 and 20-119 at level 5 (Phase 5's survey, Phase 6's known failures and held-out seeds), the pair tables use seeds up to 34, and tests use 424242, so no seed here shaped any rule, weight, threshold, or prompt.",
+  "levels": [2, 3, 5],
+  "seed_start": 1000,
+  "seed_count": 20,
+  "smoke": {
+    "level": 5,
+    "seed_count": 5,
+    "step_timeout_ms": 1500,
+    "systems": ["ladder_free", "ladder_ground_truth"]
+  }
+}

@@ -28,6 +28,57 @@ Irreversible steps — submit, pay, delete, send — never heal without human ap
 
 Maintenance cost falls over time instead of growing.
 
+## Measured
+
+Every action Mendwork sends is checked against ground truth at the moment it happens — on the
+chaos portal, the portal's own record of which element each control is, which the product never
+reads; on a real application, a person's labels, written before Mendwork ran on that release. A step
+that acted on an element that was not its control is a **wrong action**, and it is the number that
+matters: automation that clicks the wrong thing is worse than automation that stops.
+
+**The chaos grid.** Both example workflows at chaos levels 2, 3 and 5, on seeds 1000–1019 — fixed
+before any benchmark ran and never used in development — through four systems, 120 runs each:
+
+| System | Wrong-action steps | False successes | Changed steps completed | Unnecessary abstentions |
+|---|---|---|---|---|
+| Recorded CSS selector script | 3 of 393 (0.8%) | 0 | 114 of 194 (58.8%) | 80 of 390 (20.5%) |
+| Role + name locator script | 0 of 414 (0.0%) | 0 | 140 of 228 (61.4%) | 88 of 413 (21.3%) |
+| **Mendwork, free rungs only** | **0 of 619 (0.0%)** | **0** | **262 of 293 (89.4%)** | 31 of 607 (5.1%) |
+| Mendwork + ground-truth chooser | 0 of 694 (0.0%) | 0 | 308 of 324 (95.1%) | 16 of 676 (2.4%) |
+
+On the heal fixture suite's 67 one-change cases, Mendwork's free rungs completed **48 of 48**
+changed steps, abstained correctly on **15 of 15** steps that must not act, and made **no
+unnecessary abstentions and no wrong actions**.
+
+The free rungs use **no model at all**: every heal above came from the free ladder, at a median
+299 ms per healed step against 132 ms for a step that needed no healing. The ground-truth chooser is
+not a model — it answers from ground truth, so its column is an upper bound on what the model rung's
+rules allow, not a result.
+
+**A real release pair.** A workflow recorded on a local Gitea 1.19.4 and replayed on 1.22.6, images
+pinned by digest, with a person's labels for every step of the later release. Every system stopped at
+the same step, and not because of how it found the element: the step's checkpoint, recorded on
+1.19.4, asserts a heading that Gitea 1.22 deleted, so the step cannot be verified on the later
+release however the element is found. No system reached the workflow's irreversible step. That
+failure mode — a release removing the evidence that a step worked, rather than moving the control —
+is one the chaos portal cannot produce, and it is the most useful thing the pair found.
+
+**Reading these numbers.** Denominators differ because a system that stops early reaches fewer
+steps. The script baselines check the workflow's own checkpoints, which a plain script usually
+lacks, so they stop after a wrong action where a real script would carry on: their wrong-action
+counts are a **lower bound**. The recorded-CSS baseline can only run a step whose element our
+recorder gave a CSS selector, which it does only for elements with an id — a limit of our recorder,
+not of CSS selectors. Two full runs of the grid produced **identical outcome digests across all 748
+cells**, and CI re-runs 20 of them on every push, failing the build on a single wrong action.
+
+Full numbers, every chart's underlying table, and the provenance of each run are in
+[`benchmarks/results/scorecard.html`](benchmarks/results/scorecard.html); the method, the outcome
+definitions and every limitation are in [ADR 0014](docs/adr/0014-benchmark-and-scorecard.md).
+
+```sh
+make bench     # the published benchmark, and the scorecard
+```
+
 ## Getting started
 
 Requires [uv](https://docs.astral.sh/uv/), GNU Make, and Node.js 24 (for the TypeScript
@@ -56,7 +107,8 @@ Configuration is read from the environment with the `MENDWORK_` prefix. Copy
 | `make jscheck` | TypeScript check of the chaos portal's JavaScript |
 | `make test` | Unit and browser tests with coverage gates |
 | `make check` | Everything above — must pass before any phase is done |
-| `make schema` | Regenerate `schemas/workflow.schema.json` from the domain models |
+| `make schema` | Regenerate the workflow and benchmark-results JSON Schemas |
+| `make bench` | Run the published benchmark and write the results and scorecard |
 
 ## Workflows
 
@@ -83,5 +135,10 @@ and exits 1.
 
 ## Status
 
-Phase 2 of 12: the domain model and workflow format. Workflows can be validated and
-stored as immutable versions; replaying them in a browser arrives in Phase 3.
+Phase 9 of 12, and the MVP is complete: record a workflow, replay it deterministically,
+heal it when the site changes, verify every repair, save it as a new version, and measure
+the whole thing against script baselines with ground truth at every action. The numbers
+above are what that measurement produced.
+
+Phases 10 to 12 — the multi-company API and worker, the dashboard, and deployment —
+are not built.

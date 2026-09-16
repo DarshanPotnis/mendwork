@@ -11,6 +11,7 @@ import json
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 from typing import Final
 
@@ -22,10 +23,14 @@ PROBE: Final = """
 import importlib.resources, json
 import mendwork.adapters.browser_playwright as package
 import mendwork.adapters.report_html as report
+import mendwork.adapters.scorecard_html as scorecard
 directory = importlib.resources.files(package) / "js"
 print(json.dumps({
     "module": package.__file__,
     "report_module": report.__file__,
+    "scorecard_stylesheet": (importlib.resources.files(scorecard) / "scorecard.css").read_text(
+        encoding="utf-8"
+    ),
     "scripts": {
         entry.name: entry.read_text(encoding="utf-8")
         for entry in directory.iterdir()
@@ -67,3 +72,10 @@ def test_every_page_script_and_the_report_stylesheet_load_from_the_built_wheel(
     assert {"recorder.js", "element_view.js"} <= set(expected)
     assert reply["scripts"] == expected
     assert reply["stylesheet"] == STYLESHEET.read_text(encoding="utf-8")
+    scorecard_css = ADAPTERS / "scorecard_html" / "scorecard.css"
+    assert reply["scorecard_stylesheet"] == scorecard_css.read_text(encoding="utf-8")
+    # The benchmark harness reads the chaos portal's ground truth; it never ships (ADR 0014).
+    with zipfile.ZipFile(wheel) as archive:
+        names = archive.namelist()
+        assert not [name for name in names if name.startswith(("benchmarks/", "tests/"))]
+        assert not [name for name in names if b"__chaos" in archive.read(name)]

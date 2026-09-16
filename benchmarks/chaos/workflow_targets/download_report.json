@@ -9,5 +9,12 @@
     "fill_date_to": "reports.date_to",
     "apply_filter": "reports.apply_filter",
     "download_csv": "reports.download_csv"
+  },
+  "inputs": {
+    "portal_url": "{portal}index.html?seed={seed}&level={level}",
+    "account_email": "buyer@harborline.test"
+  },
+  "secrets": {
+    "portal_password": "harbor-demo"
   }
 }

@@ -99,7 +99,8 @@ mendwork/
 │   ├── adr/                      # one file per architecture decision
 │   ├── security.md               # Phase 12
 │   └── deploy.md                 # Phase 12
-├── schemas/workflow.schema.json  # generated from domain models (`make schema`); a test keeps it fresh
+├── schemas/                      # workflow.schema.json and bench-results.schema.json, generated from
+│                                 #   the domain models (`make schema`); tests keep both fresh
 ├── workflows/examples/           # hand-written sample workflows for the chaos portal
 ├── src/mendwork/
 │   ├── engine/
@@ -117,7 +118,10 @@ mendwork/
 │   │   ├── patching/             # eligibility, heal change records, capture, rebase, promotion, the
 │   │   │                         #   Patcher, workflow sources, history, diff, import and rollback
 │   │   │                         #   plans, and the words they share (ADR 0013)
-│   │   ├── reporting/            # the run report's view model and its words
+│   │   ├── reporting/            # the run report's and the benchmark scorecard's view models, and
+│   │   │                         #   their words
+│   │   ├── benchmark/            # pure benchmark semantics: ground truth and observations, outcome
+│   │   │                         #   classes, metrics, the results schema and digest (ADR 0014)
 │   │   └── errors.py
 │   ├── adapters/
 │   │   ├── browser_playwright/   # BrowserPort: launcher, session, Rung 0 primitives, tracing
@@ -133,6 +137,8 @@ mendwork/
 │   │   ├── storage_fs/           # WorkflowStore on files: one directory per workflow, no-overwrite publish;
 │   │   │                         #   PendingPatches: <store>/.pending/<workflow_id>.json under flock
 │   │   ├── report_html/          # the run report: escaped markup, inline CSS, data: screenshots, CSP
+│   │   ├── scorecard_html/       # the benchmark scorecard: inline SVG charts, inline CSS, CSP, no script
+│   │   ├── benchmark_fs/         # benchmark results and scorecards on disk, replaced atomically
 │   │   ├── storage_postgres/     # Phase 10
 │   │   ├── artifacts_local/      # ArtifactStore: artifacts/runs/<run_id>/, atomic ordered writes;
 │   │   │                         #   RunRecords: per-run flock claims, records read back
@@ -142,7 +148,7 @@ mendwork/
 │   │   └── system/               # Clock, Timer, RandomSource, RunIdGenerator, HostResolver
 │   ├── apps/
 │   │   ├── cli/                  # Typer: validate, schema, record, run, show, approve, reject,
-│   │   │                         #   history, diff, rollback, import; later bench
+│   │   │                         #   history, diff, rollback, import, bench (harness imported lazily)
 │   │   ├── api/                  # Phase 10: FastAPI
 │   │   ├── portal/               # chaos portal server, shared by `make portal` and browser tests
 │   │   └── worker/               # Phase 10
@@ -154,11 +160,14 @@ mendwork/
 │   ├── js/chaos/                 # engine: seeded streams, config, selection, window.__chaos
 │   ├── js/mutations/             # one module per mutation
 │   └── types/                    # type-only .d.ts files (e.g. window.__chaos)
-├── benchmarks/
+├── benchmarks/                   # never shipped: reads the chaos portal's ground truth (ADR 0014)
 │   ├── chaos/                    # heal_pairs.json and abstain_pairs.json + their generator
 │   │   │                         #   (`make chaos-pairs`), the heal fixture suite, seed surveys,
-│   │   │                         #   evaluation models, Rung 3's evaluation and held-out seeds
-│   │   └── workflow_targets/     # per example workflow: step id → chaos target key (ground truth)
+│   │   │                         #   evaluation models, Rung 3's evaluation and held-out seeds;
+│   │   │                         #   the benchmark grid (bench.py), its systems, and its seeds
+│   │   └── workflow_targets/     # per example workflow: step id → chaos target key, and run inputs
+│   ├── baselines/                # plain Playwright scripts: the CSS and role + name baselines
+│   ├── results/                  # chaos-results.json and scorecard.html, written by `make bench`
 │   ├── real_apps/                # release A → release B harness
 │   └── fixtures/dom/             # before/after DOM snapshots for fast tests
 ├── dashboard/                    # Phase 11: React + Vite + TypeScript
@@ -769,29 +778,64 @@ class ModelPort(Protocol):
 
 ### Real-app pairs
 
-A workflow recorded on release A of a self-hosted open-source web app is replayed on release B, running locally in Docker. These are real UI changes nobody faked, on our own instances, so there is no terms-of-service issue.
+A workflow recorded on release A of a self-hosted open-source web app is replayed on release B, both running locally in containers. These are real UI changes nobody faked, on our own instances of MIT-licensed software, so there is no terms-of-service issue. The chosen pair is Gitea 1.19.4 → 1.22.6, images pinned by digest.
+
+Ground truth is a person's, and Mendwork cannot be tuned to it (ADR 0014):
+
+- every step of release B is labelled before Mendwork runs on it, from B's own UI and templates;
+- a walk performs the workflow with the labels alone, proving each matches one visible element, and the user approves each label against its screenshot;
+- scoring refuses labels changed after approval, and any setting but the defaults;
+- each system runs against its own freshly seeded container, because the task's last step creates an issue and cannot be undone.
+
+**What the pair found.** Every system stopped at the same step, and not because of how it found the element: the step's checkpoint, recorded on 1.19.4, asserts a heading that Gitea 1.22 removed, so the step cannot be verified on release B however the element is found. The chaos portal cannot produce that failure — it scrambles controls but never deletes the evidence that a step worked. No system reached the workflow's irreversible step, so `approval_requested` is unexercised on a real application. The workflow was not re-recorded with a checkpoint chosen after seeing release B: that would tune it to the release (ADR 0014).
+
+### What is measured (ADR 0014)
+
+- **The chaos grid:** both example workflows at levels 2, 3, and 5, on seeds 1000 to 1019 (`benchmarks/chaos/bench_seeds.json`), fixed before any benchmark ran and never used in development.
+- **Single mutations:** the heal fixture suite's 67 cases through every system.
+- **Ground truth at every action.** The benchmark's browser wrapper records which of the workflow's controls each element really is, lined up with the run's events: which rung found it, whether it replayed an earlier step during a restore, and what the checkpoints right after it said. It also reads the page's recorded wrong actions, and whether a stopped step's control was still there.
+
+### Outcome classes
+
+Each reached targeted step gets one class; the first rule that holds decides (`engine/benchmark/outcomes.py`):
+
+1. **`healed_wrong`, `direct_wrong`:** an action reached a wrong element, anything was activated at an abstain step, or the page recorded a wrong action; split by whether the element came from the ladder. A wrong step is a **false success** when the checkpoints right after the wrong action passed, and **caught** otherwise.
+2. **`approval_requested`:** the step stopped for a person.
+3. **`healed_correct`, `direct_correct`:** expected act, succeeded, every action on the real control.
+4. **`abstained_correct`:** expected abstain; decided not to act; acted on nothing.
+5. **`abstained_unnecessary`:** expected act; decided not to act; acted on nothing, while the real control was attached and visible.
+6. **`ground_truth_unknown`:** an action reached an element ground truth could not judge, and nothing at the step was wrong. Counted as neither wrong nor correct, and reported on its own.
+7. **`failed`:** everything else, such as a correct action whose checks failed, or a stop that is not a decision.
+
+A decision not to act is a heal abstention (except an unstable page or the heal clock), not found, ambiguous, drifted, or a used-up budget; for a script, no element or several.
+
+Every run that did not succeed also records **where it stopped**: the step, its stop kind and its reason, including a navigate step, which acts on no control and so has no outcome class. A results document will not validate without it, and a reason nobody supplied is published as `unrecorded`, so a failure the benchmark cannot explain is visible rather than absent. The scorecard shows the breakdown per system.
+
+Ground truth answers one of three ways at each action: on target, off target, or unknown. The chaos portal always answers; a person's label on a real application names nothing when it matches no element or several, and an action checked against it is **never counted wrong** — the benchmark did not see what it reached. Acting at all on an abstain step stays wrong whatever element was reached.
 
 ### Metrics
 
-- **Wrong-action rate** (headline metric; target 0)
-- heal success rate
-- correct-abstain rate
-- unnecessary-abstain rate
-- model calls per run
-- estimated cost per run
-- p50/p95 step latency
-- rung distribution
+Every rate is `n of N` over reached steps, because a system that stops early reaches fewer:
 
-### Baselines
+- **wrong-action rate** (headline; target 0), with false successes and caught wrong actions;
+- changed steps completed, the success rate comparable across every system;
+- heal success (ladder systems only);
+- correct and unnecessary abstentions;
+- model calls and estimated cost per run (a call without a price is never shown as free);
+- step latency p50/p95, resolutions, and stop reasons;
+- every metric again for strong, weak, and no verification (ADR 0010).
 
-- recorded CSS selector only
-- Playwright role + name locator only
-- full ladder without Rung 3
-- full ladder
+### Systems
+
+- **Recorded CSS selector** and **role + name locator** (a label for fields without a role): plain Playwright scripts in `benchmarks/baselines`, with Playwright's auto-waiting and strict mode, and no identity check or healing. They check the workflow's own checkpoints, which a plain script usually lacks, so their wrong actions are a lower bound. Neither is a mode of the product: no setting switches healing off.
+- **Mendwork, free rungs:** the product as shipped.
+- **Mendwork + ground-truth chooser:** Rung 3 answered from ground truth; an upper bound, not a model.
+- **Mendwork + a local model:** Rung 3 through the configured provider.
 
 ### Output
 
-Versioned results JSON and a static HTML scorecard. CI runs a small smoke benchmark and **fails if the wrong-action rate is above 0**.
+- `mendwork bench chaos` (and `make bench`) writes `benchmarks/results/chaos-results.json`: schema version 1 (`schemas/bench-results.schema.json`), with an outcomes digest per section, checked on every read. It also writes `scorecard.html`: inline SVG charts, inline CSS, no script, a Content-Security-Policy that refuses every fetch, and a table behind every chart. `mendwork bench real-app` writes `real-app-results.json` for the pair. `mendwork bench scorecard` renders any results files in the order given; the first supplies the headline tiles, so the chaos grid leads and the pair follows in its own section.
+- **The CI smoke gate** (`tests/integration/test_bench_smoke.py`, in `make check-all`) reruns level 5, seeds 1000 to 1004, through the free ladder and the ground-truth chooser at a 1.5 s step timeout. It fails on any wrong action or false success, and when those cells' outcomes differ from the committed results.
 
 ---
 
@@ -805,6 +849,7 @@ Versioned results JSON and a static HTML scorecard. CI runs a small smoke benchm
 | Provider contract | model adapters | Recorded HTTP fixtures (`respx`); live calls only via `make live-providers` |
 | API | endpoints, tenant isolation, queue | Real Postgres (CI service container); isolation tests for every resource |
 | E2E | full run, heal, patch, rerun with zero model calls | In process against ground truth (`test_patching_guarantee.py`) and through the CLI with a counting model server (`test_cli_patching_browser.py`); the API from Phase 10 |
+| Benchmark | outcome classes, metrics, results schema, scorecard, script baselines | Pure classification and metrics from unit tests (ratcheted); the script runner on routed fixture pages; the CI smoke benchmark gates on zero wrong actions and on matching the committed results' outcomes digest (ADR 0014) |
 
 **Coverage gates:** engine ≥ 90% lines, overall ≥ 85%.
 

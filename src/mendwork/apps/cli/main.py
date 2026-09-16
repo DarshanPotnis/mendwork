@@ -11,6 +11,7 @@ import typer
 from pydantic import ValidationError
 
 from mendwork.apps.cli.approvals import approve, reject
+from mendwork.apps.cli.bench import bench_app
 from mendwork.apps.cli.diff import diff
 from mendwork.apps.cli.exit_codes import ExitCode
 from mendwork.apps.cli.history import history
@@ -42,6 +43,7 @@ app.command()(diff)
 app.command()(rollback)
 app.command(name="import")(import_workflow)
 app.command(name="record")(build_record_command(production_dependencies()))
+app.add_typer(bench_app, name="bench")
 
 
 def _print_version(requested: bool) -> None:
